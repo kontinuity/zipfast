@@ -1,10 +1,49 @@
-import { Button, Collapse, Container, Text, Title } from '@mantine/core';
+import { Button, Collapse, Container, Group, Loader, Text, Title } from '@mantine/core';
 import { IconReload } from '@tabler/icons-react';
 import GenericError from './GenericError';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+// ReloadPage is shown when a lazily-imported route chunk fails to load — almost
+// always because a new build was deployed while this tab was open, so the old
+// asset hashes (e.g. /assets/folders-OLD.js) no longer exist.
+//
+// Rather than blocking the user with a manual prompt, we self-heal: reload once
+// to fetch the fresh index.html (served no-cache) and its new chunk hashes. A
+// short sessionStorage guard prevents an infinite loop — if the error recurs
+// immediately (a genuinely broken deploy), we fall back to the manual prompt.
+const RELOAD_GUARD_KEY = 'zf_chunk_reload_at';
+const RELOAD_GUARD_WINDOW = 15000; // ms
 
 export default function ReloadPage() {
   const [view, setView] = useState(false);
+  const [autoReloading, setAutoReloading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const last = Number(window.sessionStorage.getItem(RELOAD_GUARD_KEY) ?? 0);
+      if (Date.now() - last > RELOAD_GUARD_WINDOW) {
+        window.sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+        setAutoReloading(true);
+        window.location.reload();
+      }
+    } catch {
+      /* sessionStorage unavailable (private mode) — show the manual prompt */
+    }
+  }, []);
+
+  if (autoReloading) {
+    return (
+      <Container my='lg'>
+        <Group gap='sm'>
+          <Loader size='sm' />
+          <Title order={3}>Updating…</Title>
+        </Group>
+        <Text size='lg' mt='xs'>
+          Loading the latest version of the app.
+        </Text>
+      </Container>
+    );
+  }
 
   return (
     <Container my='lg'>

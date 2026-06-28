@@ -170,6 +170,16 @@ func (a *App) spaFallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A request that looks like a static asset (has a file extension, e.g.
+	// /assets/folders-OLD.js) but was not found must return a real 404 — never
+	// fall back to index.html. Otherwise the browser receives HTML where it
+	// expects a module/stylesheet, producing the confusing "Failed to fetch
+	// dynamically imported module" error for a stale chunk after a redeploy.
+	if path.Ext(reqPath) != "" {
+		a.Error(w, http.StatusNotFound, "not found")
+		return
+	}
+
 	// SPA fallback: serve index.html for client-side routes (no caching so a new
 	// deploy is picked up immediately).
 	indexPath := filepath.Join(webDir, "index.html")
