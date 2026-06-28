@@ -1,0 +1,13 @@
+.git
+.gitignore
+bin/
+*.exe
+uploads/
+.env
+# web build artifacts (rebuilt inside the image)
+web/node_modules/
+web/dist/
+web/src/prisma/
+# docs / local
+*.md
+docker-compose.yml

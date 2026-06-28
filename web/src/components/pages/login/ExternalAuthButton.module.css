@@ -1,0 +1,10 @@
+.button {
+  transition:
+    background-color 100ms ease,
+    color 300ms ease;
+}
+
+.button:hover {
+  background-color: var(--ai-hover);
+  color: var(--ai-hover-color);
+}

@@ -1,0 +1,42 @@
+# rclone exclude-from for zipfast
+#
+# Sends only the source needed to build the Docker image. The image build itself
+# rebuilds node_modules (pnpm install), the SPA (vite build -> web/dist), the
+# Prisma client (prisma generate -> web/src/prisma), and the Go binaries.
+#
+# Example:
+#   rclone sync ./ remote:zipfast            --exclude-from rclone-exclude.txt
+#   rclone sync ./ sftpremote:/srv/zipfast   --exclude-from rclone-exclude.txt
+# Then on the server:  docker build -t zipfast .   (or: docker compose up -d --build)
+
+# --- version control ---
+/.git/**
+**/.git/**
+
+# --- IDE / editor / OS junk ---
+/.idea/**
+/.vscode/**
+**/.DS_Store
+**/*.swp
+**/*~
+
+# --- secrets & local runtime data (keeps .env.example) ---
+/.env
+/.env.local
+/uploads/**
+/tmp/**
+
+# --- Go build outputs / binaries (rebuilt in the image) ---
+/bin/**
+/zipfast
+/zipfastctl
+**/*.exe
+/vendor/**
+
+# --- web client artifacts (rebuilt in the image) ---
+**/node_modules/**
+/web/dist/**
+/web/src/prisma/**
+
+# --- this exclude file itself ---
+/rclone-exclude.txt

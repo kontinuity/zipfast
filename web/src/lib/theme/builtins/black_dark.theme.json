@@ -1,0 +1,21 @@
+{
+  "name": "Black Dark",
+  "id": "builtin:black_dark",
+  "colorScheme": "dark",
+  "colors": {
+    "dark": [
+      "#ffffff",
+      "#A7A9AD",
+      "#7B7E84",
+      "#61646A",
+      "#54575D",
+      "#303236",
+      "#191a1c",
+      "#060606",
+      "#141517",
+      "#000000"
+    ]
+  },
+  "primaryColor": "gray",
+  "mainBackgroundColor": "#000"
+}

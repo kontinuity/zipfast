@@ -1,0 +1,34 @@
+{
+  "name": "Catppuccin Latte",
+  "id": "builtin:cat_latte",
+  "colorScheme": "light",
+  "colors": {
+    "blue": [
+      "#FFFFFF",
+      "#3676f6",
+      "#0a57ee",
+      "#094ed6",
+      "#1d42f5",
+      "#1d54f5",
+      "#1d65f5",
+      "#1d77f5",
+      "#1d89f5",
+      "#1e66f5"
+    ],
+    "gray": [
+      "#ccd0da",
+      "#ccd0da",
+      "#9ca0b0",
+      "#ccd0da",
+      "#acb0be",
+      "#bcc0cc",
+      "#5c5f77",
+      "#eff1f5",
+      "#e6e9ef",
+      "#dce0e8"
+    ]
+  },
+  "white": "#eff1f5",
+  "primaryColor": "blue",
+  "mainBackgroundColor": "#e6e9ef"
+}

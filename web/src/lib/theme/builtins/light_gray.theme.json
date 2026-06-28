@@ -1,0 +1,7 @@
+{
+  "name": "Light Gray",
+  "id": "builtin:light_gray",
+  "colorScheme": "light",
+  "primaryColor": "gray",
+  "mainBackgroundColor": "color-mix(in srgb, var(--mantine-color-white), black 3%)"
+}

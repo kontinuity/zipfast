@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zipfast
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: zipfast
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "zipfast"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zipfast:
+    build: .
+    image: zipfast:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CORE_SECRET: ${CORE_SECRET:?set CORE_SECRET (>=16 chars)}
+      DATABASE_URL: postgres://zipfast:${POSTGRES_PASSWORD}@postgres:5432/zipfast
+      DATASOURCE_TYPE: local
+      DATASOURCE_LOCAL_DIRECTORY: /zipfast/uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      # Named volume: Docker initializes it with the image dir's ownership
+      # (uid 10001), so the non-root app can write. A host bind-mount
+      # (./uploads:/zipfast/uploads) would be root-owned and fail unless you
+      # `chown 10001:10001 ./uploads` on the host first.
+      - uploads:/zipfast/uploads
+
+volumes:
+  pgdata:
+  uploads:
