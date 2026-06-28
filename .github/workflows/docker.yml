@@ -28,9 +28,6 @@ jobs:
         arch: [amd64, arm64]
     # Native runners per arch (no QEMU) keep builds fast.
     runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
-    env:
-      # secrets can't be read in a step-level `if:`, so resolve once here.
-      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,31 +43,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to Docker Hub
-        if: env.HAS_DOCKERHUB == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Compute tags
-        id: tags
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          ARCH: ${{ matrix.arch }}
-          SHORT_SHA: ${{ steps.sha.outputs.short_sha }}
-        run: |
-          {
-            echo "tags<<EOF"
-            echo "${GHCR_IMAGE}:main-${ARCH}"
-            echo "${GHCR_IMAGE}:main-${SHORT_SHA}-${ARCH}"
-            if [ -n "${DOCKERHUB_USERNAME}" ]; then
-              echo "${DOCKERHUB_USERNAME}/zipfast:main-${ARCH}"
-              echo "${DOCKERHUB_USERNAME}/zipfast:main-${SHORT_SHA}-${ARCH}"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v6
         with:
@@ -82,7 +54,9 @@ jobs:
           provenance: false
           build-args: |
             ZIPFAST_VERSION=main-${{ steps.sha.outputs.short_sha }}
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: |
+            ${{ env.GHCR_IMAGE }}:main-${{ matrix.arch }}
+            ${{ env.GHCR_IMAGE }}:main-${{ steps.sha.outputs.short_sha }}-${{ matrix.arch }}
 
   manifest:
     name: multi-arch manifests
@@ -91,8 +65,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    env:
-      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,28 +81,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Login to Docker Hub
-        if: env.HAS_DOCKERHUB == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Create & push multi-arch manifests
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           SHORT_SHA: ${{ steps.sha.outputs.short_sha }}
         run: |
           set -euo pipefail
-          combine() {
-            repo="$1"
-            for tag in "main" "main-${SHORT_SHA}" "edge"; do
-              docker buildx imagetools create -t "${repo}:${tag}" \
-                "${repo}:main-amd64" \
-                "${repo}:main-arm64"
-            done
-          }
-          combine "${GHCR_IMAGE}"
-          if [ -n "${DOCKERHUB_USERNAME}" ]; then
-            combine "${DOCKERHUB_USERNAME}/zipfast"
-          fi
+          for tag in "main" "main-${SHORT_SHA}" "edge"; do
+            docker buildx imagetools create -t "${GHCR_IMAGE}:${tag}" \
+              "${GHCR_IMAGE}:main-amd64" \
+              "${GHCR_IMAGE}:main-arm64"
+          done

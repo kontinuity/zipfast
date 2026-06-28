@@ -16,7 +16,7 @@ body:
     attributes:
       label: How is zipfast being run?
       options:
-        - Docker image (GHCR / Docker Hub)
+        - Docker image (GHCR)
         - Prebuilt binary
         - Built from source (make build)
         - Other (describe above)

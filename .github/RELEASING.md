@@ -6,7 +6,7 @@ zipfast ships through four GitHub Actions workflows under `.github/workflows/`.
 |----------|---------|--------------|
 | `ci.yml` | PR to `main`, push to `main`, manual | gofmt + `go vet` + build + `go test`, web SPA build, Docker image sanity build (no push). The merge gate. |
 | `docker.yml` | push to `main`, manual | Builds **amd64 + arm64** natively and pushes `main`, `main-<sha>`, `edge` multi-arch tags. Every merge = a fresh image (rapid releases). |
-| `release.yml` | push tag `v*.*.*`, manual | Builds versioned multi-arch images (`<version>` + `latest`), creates a GitHub Release, and syncs the Docker Hub overview from `DOCKER.md`. |
+| `release.yml` | push tag `v*.*.*`, manual | Builds versioned multi-arch images (`<version>` + `latest`) on GHCR and creates a GitHub Release. |
 | `zipline-sync.yml` | weekly schedule, manual | Opens a tracking issue when upstream Zipline ships a release newer than `ZIPLINE_PARITY`. |
 
 ## 1. Rapid releases
@@ -41,9 +41,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-This builds `:0.1.0` + `:latest` (multi-arch) on GHCR (and Docker Hub if configured)
-and drafts a GitHub Release with auto-generated notes. To rebuild without a new tag,
-run the **Release** workflow manually and supply the version.
+This builds `:0.1.0` + `:latest` (multi-arch) on GHCR and drafts a GitHub Release
+with auto-generated notes. To rebuild without a new tag, run the **Release**
+workflow manually and supply the version.
 
 ## 4. Zipline version alignment (good-to-have)
 
@@ -62,12 +62,9 @@ upstream release, bump `ZIPLINE_PARITY` and cut a zipfast release.
 | Secret | Needed for | Notes |
 |--------|-----------|-------|
 | `GITHUB_TOKEN` | GHCR push, releases, issues | Built in — nothing to configure. |
-| `DOCKERHUB_USERNAME` | Docker Hub mirror | Optional. Without it, the Docker Hub steps are skipped and GHCR still publishes. |
-| `DOCKERHUB_TOKEN` | Docker Hub mirror | A Docker Hub access token (not your password). |
-| `DOCKERHUB_PASSWORD` | Docker Hub overview sync | Used by the `dockerhub-readme` job in `release.yml`. The description API needs your account password **or** a PAT with **read/write/admin** scope (a push-only token is not enough). |
 
-The Docker Hub overview sync runs after the image push within the same release,
-so the repository already exists by then.
+Publishing is **GHCR-only** and uses the built-in `GITHUB_TOKEN`, so no additional
+secrets need to be configured.
 
 First GHCR push creates a **private** package — make it public (or grant pull access)
 under the repo's *Packages* settings if you want anonymous `docker pull`.

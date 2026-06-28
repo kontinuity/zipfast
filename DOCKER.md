@@ -25,13 +25,12 @@ A low-footprint, **Go** reimplementation of [Zipline](https://github.com/diced/z
 
 All tags are multi-arch manifests (`linux/amd64` + `linux/arm64`). Per-arch tags (`…-amd64` / `…-arm64`) are also published if you need to pin an architecture.
 
-## Image registries
+## Image registry
 
-The same image is published to both:
+Published to the GitHub Container Registry:
 
 ```
-ghcr.io/kontinuity/zipfast:latest        # GitHub Container Registry
-docker.io/<dockerhub-namespace>/zipfast:latest
+ghcr.io/kontinuity/zipfast:latest
 ```
 
 ## Quick start
