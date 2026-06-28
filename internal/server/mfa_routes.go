@@ -336,7 +336,17 @@ func (a *App) mfaPasskeyRegisterOptions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	creation, sessionData, err := wa.BeginRegistration(waUser)
+	// Request a discoverable (resident) credential with user verification, matching
+	// Zipline's { residentKey: 'preferred', userVerification: 'preferred' }. This is
+	// required for usernameless/discoverable login to find the passkey later —
+	// without it the credential is non-resident and the browser reports "no passkey
+	// for this domain" at login.
+	creation, sessionData, err := wa.BeginRegistration(waUser,
+		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+			ResidentKey:      protocol.ResidentKeyRequirementPreferred,
+			UserVerification: protocol.VerificationPreferred,
+		}),
+	)
 	if err != nil {
 		a.Error(w, http.StatusInternalServerError, "failed to begin registration")
 		return
