@@ -61,6 +61,7 @@ func (a *App) registerUploadRoutes(r chi.Router) {
 // handleUpload streams a multipart/form-data upload, storing each file part and
 // recording it in the database. See the package-level note on memory discipline.
 func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
+	log := a.logFor(r)
 	user := a.authenticate(r)
 
 	// Parse the x-zipline-* directives. ParseHeaders only needs the header set
@@ -99,6 +100,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	log.Debug("upload started", "folder", opts.Folder, "anonymous", anonymousFolderUpload)
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -153,6 +155,8 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusBadRequest, "no files received")
 		return
 	}
+
+	log.Info("upload complete", "files", len(results), "folder", opts.Folder, "anonymous", anonymousFolderUpload)
 
 	// noJSON: a plain-text, comma-separated list of URLs.
 	if opts.NoJSON {

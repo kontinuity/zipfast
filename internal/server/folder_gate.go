@@ -84,6 +84,7 @@ func (a *App) handleFolderGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Debug("folder gate: locked, showing password form", "folder", f.ID)
 	var m embedMeta
 	m.title("Password Protected")
 	body := passwordFormBody(r.URL.Path, r.URL.Query().Get("error") != "")
@@ -105,6 +106,7 @@ func (a *App) handleFolderGatePassword(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	ok, _ := auth.VerifyPassword(*f.Password, r.PostFormValue("password"))
 	if !ok {
+		a.logFor(r).Debug("folder gate: wrong password", "folder", f.ID)
 		http.Redirect(w, r, r.URL.Path+"?error=1", http.StatusFound)
 		return
 	}
@@ -123,6 +125,7 @@ func (a *App) handleFolderGatePassword(w http.ResponseWriter, r *http.Request) {
 		Secure:   requestIsHTTPS(r),
 		MaxAge:   int(folderTokenTTL.Seconds()),
 	})
+	a.logFor(r).Info("folder unlocked", "folder", f.ID)
 	http.Redirect(w, r, "/folder/"+f.ID, http.StatusFound)
 }
 
@@ -163,6 +166,7 @@ func (a *App) fileFolderProtected(ctx context.Context, file *models.File) (strin
 func (a *App) fileFolderBlocked(w http.ResponseWriter, r *http.Request, file *models.File) bool {
 	fid, prot := a.fileFolderProtected(r.Context(), file)
 	if prot && !a.folderTokenValid(r, fid) {
+		a.logFor(r).Debug("file access gated by folder password", "folder", fid, "name", file.Name)
 		http.Redirect(w, r, "/folder/"+fid, http.StatusFound)
 		return true
 	}

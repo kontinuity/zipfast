@@ -207,6 +207,7 @@ func (a *App) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to load created user")
 		return
 	}
+	a.logFor(r).Info("admin created user", "newUserId", id, "role", role)
 	a.WriteJSON(w, http.StatusOK, au)
 }
 
@@ -367,6 +368,7 @@ func (a *App) handleAdminPatchUser(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to reload user")
 		return
 	}
+	a.logFor(r).Info("admin updated user", "targetUserId", id)
 	a.WriteJSON(w, http.StatusOK, au)
 }
 
@@ -452,6 +454,7 @@ func (a *App) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("admin deleted user", "deletedUserId", id)
 	a.WriteJSON(w, http.StatusOK, au)
 }
 
@@ -623,6 +626,7 @@ func (a *App) handleAdminCreateInvite(w http.ResponseWriter, r *http.Request) {
 		Role:     actor.Role,
 	}
 
+	a.logFor(r).Info("invite created", "inviteId", inv.ID, "inviterId", actor.ID)
 	a.WriteJSON(w, http.StatusOK, inv)
 }
 
@@ -665,5 +669,6 @@ func (a *App) handleAdminDeleteInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("invite deleted", "inviteId", id)
 	a.WriteJSON(w, http.StatusOK, inv)
 }

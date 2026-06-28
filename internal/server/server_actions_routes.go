@@ -331,6 +331,7 @@ func (a *App) sactThumbnails(w http.ResponseWriter, r *http.Request) {
 		status = "Thumbnails are being generated (rerun). This may take a while, check your logs for progress."
 	}
 
+	a.logFor(r).Info("thumbnail generation triggered", "rerun", body.Rerun)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"status": status})
 }
 
@@ -1134,6 +1135,7 @@ func (a *App) sactFolderZip(w http.ResponseWriter, r *http.Request) {
 	var files []sactZipFile
 	a.sactCollectZipFiles(ctx, folderID, "", 0, &files)
 
+	a.logFor(r).Info("public folder zip download", "folder", folderID, "files", len(files))
 	zw := zip.NewWriter(w)
 	seen := make(map[string]int, len(files))
 	for _, f := range files {

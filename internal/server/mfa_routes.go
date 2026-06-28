@@ -110,6 +110,7 @@ func (a *App) mfaTotpEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("totp enabled", "userId", user.ID)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"enabled": true})
 }
 
@@ -150,6 +151,7 @@ func (a *App) mfaTotpDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("totp disabled", "userId", user.ID)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"enabled": false})
 }
 
@@ -357,6 +359,7 @@ func (a *App) mfaPasskeyRegisterOptions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	a.logFor(r).Debug("passkey registration ceremony begin", "userId", user.ID)
 	// The SPA's startRegistration({ optionsJSON }) expects the inner options
 	// object, not the {publicKey:...} wrapper.
 	a.WriteJSON(w, http.StatusOK, creation.Response)
@@ -432,6 +435,7 @@ func (a *App) mfaPasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("passkey registered", "userId", user.ID, "name", name)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -460,6 +464,7 @@ func (a *App) mfaWebAuthnLoginOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Debug("passkey login ceremony begin")
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"id":      cuid.New(),
 		"options": assertion.Response,
@@ -533,6 +538,7 @@ func (a *App) mfaWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 		a.Log.Warn("failed to record user session", "error", err, "user", matched.ID)
 	}
 
+	a.logFor(r).Info("login", "userId", matched.ID, "method", "passkey")
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": matched})
 }
 
@@ -688,6 +694,7 @@ func (a *App) mfaPasskeyDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("passkey removed", "userId", user.ID)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

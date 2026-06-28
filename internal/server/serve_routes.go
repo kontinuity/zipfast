@@ -73,6 +73,8 @@ func (a *App) serveFileRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	viewURL := "/view/" + file.Name
+	a.logFor(r).Debug("serve file route", "name", file.Name, "type", file.Type,
+		"passwordProtected", file.Password != nil && *file.Password != "")
 
 	// Password-protected files always go through the view page.
 	if file.Password != nil && *file.Password != "" {
@@ -296,6 +298,7 @@ func (a *App) serveRawByFile(w http.ResponseWriter, r *http.Request, file *model
 	}
 
 	// --- Full GET ------------------------------------------------------------
+	a.logFor(r).Debug("datasource get", "key", file.Name, "size", size)
 	rc, gerr := a.DS.Get(file.Name)
 	if gerr != nil || rc == nil {
 		a.serveNotFound(w)
@@ -314,6 +317,7 @@ func (a *App) serveRawByFile(w http.ResponseWriter, r *http.Request, file *model
 	a.serveCountView(r, file, rangeHeader)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, rc)
+	a.logFor(r).Debug("raw served", "name", file.Name, "size", size, "download", download)
 }
 
 // serveCountView increments the file view counter when this request should count
@@ -383,6 +387,7 @@ func (a *App) serveURLRedirect(w http.ResponseWriter, r *http.Request) {
 		a.Log.Debug("serve: increment url views", "id", u.ID, "err", err)
 	}
 
+	a.logFor(r).Debug("url redirect", "code", u.Code)
 	http.Redirect(w, r, u.Destination, http.StatusFound)
 }
 

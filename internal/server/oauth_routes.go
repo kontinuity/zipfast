@@ -131,6 +131,7 @@ func (a *App) handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.oauthSetStateCookie(w, name, state, verifier)
+	a.logFor(r).Debug("oauth start", "provider", name, "pkce", prov.UsesPKCE)
 
 	sep := "?"
 	if strings.Contains(prov.AuthorizeURL, "?") {
@@ -233,6 +234,7 @@ func (a *App) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		a.Log.Warn("failed to record user session", "error", err, "user", user.ID)
 	}
 
+	a.logFor(r).Info("oauth login", "provider", name, "userId", user.ID)
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
@@ -303,6 +305,7 @@ func (a *App) oauthCreateUser(ctx context.Context, prov oauth.Provider, identity
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+	a.Log.Info("oauth user provisioned", "provider", prov.Type, "userId", user.ID)
 	return user, nil
 }
 

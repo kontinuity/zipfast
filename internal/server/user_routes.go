@@ -152,6 +152,20 @@ func (a *App) userPatchSelf(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to load user")
 		return
 	}
+	fields := make([]string, 0, 4)
+	if body.Username != nil {
+		fields = append(fields, "username")
+	}
+	if body.Password != nil && *body.Password != "" {
+		fields = append(fields, "password")
+	}
+	if body.Avatar != nil {
+		fields = append(fields, "avatar")
+	}
+	if body.View != nil {
+		fields = append(fields, "view")
+	}
+	a.logFor(r).Info("profile updated", "userId", u.ID, "fields", fields)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": updated})
 }
 
@@ -190,6 +204,7 @@ func (a *App) userPatchToken(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to load user")
 		return
 	}
+	a.logFor(r).Info("api token regenerated", "userId", u.ID)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": updated, "token": enc})
 }
 
@@ -492,6 +507,7 @@ func (a *App) userDeleteFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	a.logFor(r).Info("file deleted", "name", f.Name)
 	// The original returns the deleted file object.
 	a.WriteJSON(w, http.StatusOK, a.fileResponse(r, f))
 }
@@ -659,6 +675,7 @@ func (a *App) userCreateFolder(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to create folder")
 		return
 	}
+	a.logFor(r).Info("folder created", "folder", folder.ID, "public", folder.Public)
 	a.WriteJSON(w, http.StatusOK, resp)
 }
 
@@ -767,6 +784,7 @@ func (a *App) userPatchFolder(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to load folder")
 		return
 	}
+	a.logFor(r).Info("folder updated", "folder", folder.ID, "passwordChanged", body.Password != nil)
 	a.WriteJSON(w, http.StatusOK, resp)
 }
 
@@ -856,6 +874,7 @@ func (a *App) userDeleteFolder(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to delete folder")
 		return
 	}
+	a.logFor(r).Info("folder deleted", "folder", folder.ID)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
@@ -946,6 +965,7 @@ func (a *App) userCreateTag(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to create tag")
 		return
 	}
+	a.logFor(r).Info("tag created", "tag", tag.ID)
 	a.WriteJSON(w, http.StatusOK, resp)
 }
 
@@ -1005,6 +1025,7 @@ func (a *App) userDeleteTag(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusNotFound, "tag not found")
 		return
 	}
+	a.logFor(r).Info("tag deleted", "tag", id)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
@@ -1167,6 +1188,7 @@ func (a *App) userCreateURL(w http.ResponseWriter, r *http.Request) {
 
 	resp := urlResponse(url)
 	resp["url"] = responseURL
+	a.logFor(r).Info("url created", "url", url.ID, "code", url.Code, "hasPassword", password != nil)
 	a.WriteJSON(w, http.StatusOK, resp)
 }
 
@@ -1242,6 +1264,7 @@ func (a *App) userPatchURL(w http.ResponseWriter, r *http.Request) {
 		a.userHandleLookupErr(w, err, "url")
 		return
 	}
+	a.logFor(r).Info("url updated", "url", url.ID, "passwordChanged", body.Password != nil)
 	a.WriteJSON(w, http.StatusOK, urlResponse(url))
 }
 
@@ -1257,6 +1280,7 @@ func (a *App) userDeleteURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The original returns the deleted url object (password omitted).
+	a.logFor(r).Info("url deleted", "url", url.ID)
 	a.WriteJSON(w, http.StatusOK, urlResponse(url))
 }
 

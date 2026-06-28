@@ -208,6 +208,7 @@ func (a *App) expCreateExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logFor(r).Info("export created", "exportId", id, "files", count, "size", sizeStr)
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"id":    id,
 		"files": count,
@@ -311,6 +312,7 @@ func (a *App) expDeleteExport(w http.ResponseWriter, r *http.Request) {
 		a.Log.Warn("export: failed to remove temp file", "path", e.Path, "err", err)
 	}
 
+	a.logFor(r).Info("export deleted", "exportId", id)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -354,6 +356,7 @@ func (a *App) expExportFolder(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+expSanitizeFilename(zipName)+"\"")
 
+	a.logFor(r).Info("folder export (zip)", "folder", id, "files", len(files))
 	zw := zip.NewWriter(w)
 	a.expWriteFilesToZip(zw, files)
 	if err := zw.Close(); err != nil {

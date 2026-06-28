@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -72,6 +75,7 @@ func (a *App) ReloadSettings(ctx context.Context) {
 func (a *App) Router() http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(middleware.RequestID)
 	if a.Cfg.Core.TrustProxy {
 		r.Use(middleware.RealIP)
 	}
@@ -163,11 +167,103 @@ func UserFromContext(ctx context.Context) *models.User {
 	return u
 }
 
+// logFor returns a request-scoped logger carrying the request id (and the
+// authenticated user id when present) so handler logs correlate with the access
+// log. It never attaches secrets, tokens, or request bodies.
+func (a *App) logFor(r *http.Request) *slog.Logger {
+	l := a.Log
+	if id := middleware.GetReqID(r.Context()); id != "" {
+		l = l.With("reqId", id)
+	}
+	if u := UserFromContext(r.Context()); u != nil {
+		l = l.With("userId", u.ID)
+	}
+	return l
+}
+
+// requestLogger emits one access-log line per request. At INFO it is a concise
+// summary (method, path, status, duration, bytes) — the path never contains the
+// query string, so no secrets leak. At DEBUG it adds client IP, user-agent,
+// referer and the query string with sensitive parameters redacted. The
+// healthcheck is logged at DEBUG only to avoid flooding INFO.
 func (a *App) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
-		a.Log.Debug("request", "method", r.Method, "path", r.URL.Path)
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		next.ServeHTTP(ww, r)
+
+		status := ww.Status()
+		if status == 0 {
+			status = http.StatusOK
+		}
+		reqID := middleware.GetReqID(r.Context())
+
+		base := []any{
+			"reqId", reqID,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", status,
+			"durationMs", time.Since(start).Milliseconds(),
+			"bytes", ww.BytesWritten(),
+		}
+
+		if r.URL.Path == "/api/healthcheck" {
+			a.Log.Debug("request", base...)
+			return
+		}
+
+		a.Log.Info("request", base...)
+
+		if a.Log.Enabled(r.Context(), slog.LevelDebug) {
+			detail := []any{
+				"reqId", reqID,
+				"remoteIp", clientIP(r),
+				"ua", r.UserAgent(),
+			}
+			if ref := r.Referer(); ref != "" {
+				detail = append(detail, "referer", ref)
+			}
+			if q := redactQuery(r.URL.RawQuery); q != "" {
+				detail = append(detail, "query", q)
+			}
+			a.Log.Debug("request detail", detail...)
+		}
 	})
+}
+
+// sensitiveQueryKeys are query parameters whose values must never be logged.
+var sensitiveQueryKeys = map[string]bool{
+	"token": true, "password": true, "code": true, "secret": true,
+	"client_secret": true, "access_token": true, "refresh_token": true,
+	"state": true, "key": true, "id_token": true,
+}
+
+// redactQuery returns the query string with the values of sensitive parameters
+// replaced by "redacted". Unparseable input is dropped entirely (fail closed).
+func redactQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return "redacted"
+	}
+	for k := range values {
+		if sensitiveQueryKeys[strings.ToLower(k)] {
+			values.Set(k, "redacted")
+		}
+	}
+	return values.Encode()
+}
+
+// clientIP returns the request's remote address without the port.
+func clientIP(r *http.Request) string {
+	addr := r.RemoteAddr
+	if i := strings.LastIndex(addr, ":"); i > 0 {
+		return addr[:i]
+	}
+	return addr
 }
 
 // cors enables credentialed cross-origin requests so the SPA can be hosted on a CDN.

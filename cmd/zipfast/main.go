@@ -84,6 +84,26 @@ func main() {
 		Sessions: auth.NewSessionManager(cfg.Core.Secret, cfg.Core.ReturnHTTPSURLs),
 	}
 
+	// Startup summary (safe, non-secret fields only).
+	log.Info("zipfast starting",
+		"version", version,
+		"datasource", cfg.Datasource.Type,
+		"filesRoute", cfg.Files.Route,
+		"urlsRoute", cfg.Urls.Route,
+		"registration", cfg.Features.UserRegistration,
+		"oauthRegistration", cfg.Features.OAuthRegistration,
+		"thumbnails", cfg.Features.ThumbnailsEnabled,
+		"metrics", cfg.Features.MetricsEnabled,
+		"ratelimit", cfg.Ratelimit.Enabled,
+		"totp", cfg.MFA.TotpEnabled,
+		"passkeys", cfg.MFA.PasskeysEnabled,
+		"trustProxy", cfg.Core.TrustProxy,
+		"returnHttpsUrls", cfg.Core.ReturnHTTPSURLs,
+	)
+	if len(app.Tampered) > 0 {
+		log.Debug("settings overridden by env", "keys", app.Tampered)
+	}
+
 	addr := fmt.Sprintf("%s:%d", cfg.Core.Hostname, cfg.Core.Port)
 	srv := &http.Server{
 		Addr:              addr,
@@ -96,6 +116,7 @@ func main() {
 	defer taskCancel()
 	tasks.Start(taskCtx, store, ds, cfg, log)
 	thumbnails.Start(taskCtx, store, ds, cfg, log)
+	log.Info("background tasks started")
 
 	go func() {
 		log.Info("listening", "addr", addr, "version", version)

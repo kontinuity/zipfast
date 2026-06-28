@@ -33,11 +33,15 @@ func (a *App) impHandleImportV4(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	log := a.logFor(r)
+	log.Info("import started", "version", "v4", "bytes", len(body))
 	summary, err := importer.ImportV4(r.Context(), a.Store.Pool, body)
 	if err != nil {
+		log.Warn("import failed", "version", "v4", "err", err)
 		a.Error(w, http.StatusBadRequest, "failed to parse v4 export: "+err.Error())
 		return
 	}
+	log.Info("import finished", "version", "v4")
 	a.WriteJSON(w, http.StatusOK, summary)
 }
 
@@ -47,11 +51,15 @@ func (a *App) impHandleImportV3(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	log := a.logFor(r)
+	log.Info("import started", "version", "v3", "bytes", len(body))
 	summary, err := importer.ImportV3(r.Context(), a.Store.Pool, body)
 	if err != nil {
+		log.Warn("import failed", "version", "v3", "err", err)
 		a.Error(w, http.StatusBadRequest, "failed to parse v3 export: "+err.Error())
 		return
 	}
+	log.Info("import finished", "version", "v3")
 	a.WriteJSON(w, http.StatusOK, summary)
 }
 

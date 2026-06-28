@@ -284,6 +284,7 @@ func (a *App) handleViewFile(w http.ResponseWriter, r *http.Request) {
 	// Title is always present: original name preferred, else stored name.
 	m.title(fileDisplayName(file))
 
+	a.logFor(r).Debug("view page rendered", "name", file.Name, "type", file.Type)
 	a.writeHTML(w, http.StatusOK, embedDoc(m.b.String(), viewMediaBody(file, rawURL)))
 }
 

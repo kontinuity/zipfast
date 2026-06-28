@@ -172,6 +172,7 @@ func (a *App) uexDeleteSessions(w http.ResponseWriter, r *http.Request) {
 			a.Error(w, http.StatusInternalServerError, "failed to load sessions")
 			return
 		}
+		a.logFor(r).Info("sessions revoked", "userId", u.ID, "all", true)
 		a.WriteJSON(w, http.StatusOK, uexSessionsResponse(sessions, currentID))
 		return
 	}
@@ -203,6 +204,7 @@ func (a *App) uexDeleteSessions(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to load sessions")
 		return
 	}
+	a.logFor(r).Info("session revoked", "userId", u.ID)
 	a.WriteJSON(w, http.StatusOK, uexSessionsResponse(sessions, currentID))
 }
 
@@ -262,6 +264,8 @@ func (a *App) uexPostAvatar(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to update avatar")
 		return
 	}
+
+	a.logFor(r).Info("avatar updated", "userId", u.ID, "cleared", avatar == nil)
 
 	if avatar == nil {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -666,6 +670,7 @@ func (a *App) uexUrlPassword(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusInternalServerError, "failed to create access token")
 		return
 	}
+	a.logFor(r).Debug("url password verified")
 	a.WriteJSON(w, http.StatusOK, map[string]any{"success": true, "token": token})
 }
 

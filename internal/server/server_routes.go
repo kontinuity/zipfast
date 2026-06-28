@@ -549,6 +549,13 @@ func (a *App) handleServerPatchSettings(w http.ResponseWriter, r *http.Request) 
 	// immediately (no restart), exactly like Zipline.
 	a.ReloadSettings(r.Context())
 
+	// Log only the changed KEYS — never the values (could be secrets/webhook URLs).
+	changedKeys := make([]string, 0, len(patch))
+	for k := range patch {
+		changedKeys = append(changedKeys, k)
+	}
+	a.logFor(r).Info("server settings updated", "keys", changedKeys)
+
 	// Return the same { settings, tampered } shape as GET, with the new blob applied.
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"settings": a.srvFlatSettings(r.Context()),

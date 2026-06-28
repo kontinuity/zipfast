@@ -169,6 +169,7 @@ func (a *App) authInsertSession(r *http.Request, sessionID, userID string) error
 // handleAuthLogin verifies username/password (and TOTP when enabled for the
 // user), establishes a session, records it, and returns the user.
 func (a *App) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	log := a.logFor(r)
 	body, ok := a.authParseCreds(w, r)
 	if !ok {
 		return
@@ -176,12 +177,14 @@ func (a *App) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := a.Store.GetUserByUsername(r.Context(), body.Username)
 	if err != nil || user == nil || user.Password == nil || *user.Password == "" {
+		log.Debug("login rejected", "reason", "unknown user or no password")
 		a.authError(w, 1044)
 		return
 	}
 
 	matched, err := auth.VerifyPassword(*user.Password, body.Password)
 	if err != nil || !matched {
+		log.Debug("login rejected", "reason", "invalid credentials")
 		a.authError(w, 1044)
 		return
 	}
@@ -193,11 +196,14 @@ func (a *App) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	hasTotp := user.TotpSecret != nil && *user.TotpSecret != ""
 	if hasTotp && body.Code != "" {
 		if !auth.ValidateTOTP(*user.TotpSecret, body.Code) {
+			log.Debug("login rejected", "reason", "invalid totp code", "userId", user.ID)
 			a.authError(w, 1045)
 			return
 		}
+		log.Debug("totp verified", "userId", user.ID)
 	}
 	if hasTotp && body.Code == "" {
+		log.Debug("totp required", "userId", user.ID)
 		a.WriteJSON(w, http.StatusOK, map[string]any{"totp": true})
 		return
 	}
@@ -215,14 +221,18 @@ func (a *App) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		a.Log.Warn("failed to record user session", "error", err, "user", user.ID)
 	}
 
+	log.Info("login", "userId", user.ID, "method", "password", "mfa", hasTotp)
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
 // handleAuthLogout clears the session cookie and removes the tracked session row
 // (when its id is known).
 func (a *App) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	log := a.logFor(r)
+	var userID string
 	if a.Sessions != nil {
 		s := a.Sessions.Get(r)
+		userID = s.UserID
 		if s.SessionID != "" {
 			if _, err := a.Store.Pool.Exec(r.Context(),
 				`DELETE FROM user_sessions WHERE id=$1`, s.SessionID); err != nil {
@@ -231,6 +241,7 @@ func (a *App) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		}
 		a.Sessions.Clear(w)
 	}
+	log.Info("logout", "userId", userID)
 	// The client's ApiLogoutResponse is { loggedOut?: boolean }.
 	a.WriteJSON(w, http.StatusOK, map[string]any{"loggedOut": true})
 }
@@ -238,6 +249,7 @@ func (a *App) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 // handleAuthRegister creates a USER account when public registration is enabled
 // or a valid invite code is supplied. A consumed invite has its use count bumped.
 func (a *App) handleAuthRegister(w http.ResponseWriter, r *http.Request) {
+	log := a.logFor(r)
 	body, ok := a.authParseCreds(w, r)
 	if !ok {
 		return
@@ -311,12 +323,14 @@ func (a *App) handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	log.Info("user registered", "userId", user.ID, "role", user.Role, "viaInvite", inviteID != "")
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
 // handleAuthSetup creates the first administrator. It is only valid on a fresh
 // install (before the settings row has been marked as set up).
 func (a *App) handleAuthSetup(w http.ResponseWriter, r *http.Request) {
+	log := a.logFor(r)
 	body, ok := a.authParseCreds(w, r)
 	if !ok {
 		return
@@ -368,6 +382,7 @@ func (a *App) handleAuthSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Info("first-run setup complete", "userId", user.ID, "role", user.Role)
 	// Match the original /api/setup response: { firstSetup, user }, where
 	// firstSetup is the pre-flip value (always true here, since we returned 9001
 	// above otherwise). The client (setup.tsx) then logs in via /api/auth/login.
