@@ -27,7 +27,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${ZIPFAST_V
  && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/zipfastctl ./cmd/zipfastctl
 
 # --- 3) runtime ---
-FROM alpine:3.20
+FROM alpine:3.24
 # ffmpeg: video thumbnails + webp/jxl transcode; ca-certificates: HTTPS (S3/webhooks);
 # wget: healthcheck.
 RUN apk add --no-cache ffmpeg ca-certificates tzdata wget && adduser -D -u 10001 zipfast
