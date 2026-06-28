@@ -32,6 +32,7 @@ import { useClipboard } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArchive,
+  IconArrowUp,
   IconChevronDown,
   IconChevronUp,
   IconCopy,
@@ -597,6 +598,10 @@ export function Component() {
   const sortedFolders = page === 1 ? sortFolders(children, sortBy, order) : [];
   const hasContent = totalRecords > 0 || children.length > 0;
 
+  // Immediate (public) parent for the "up one level" button.
+  const parentCrumb = breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2] : null;
+  const folderCount = children.length;
+
   const handleSort = (column: SortColumn) => {
     if (sortBy === column) {
       setOrder(order === 'asc' ? 'desc' : 'asc');
@@ -626,6 +631,19 @@ export function Component() {
 
       <Group justify='space-between' align='center' wrap='wrap' gap='sm'>
         <Group gap='sm' wrap='nowrap'>
+          {parentCrumb && (
+            <Tooltip label={`Up to ${parentCrumb.name}`} withArrow>
+              <ActionIcon
+                variant='default'
+                size='xl'
+                radius='md'
+                onClick={() => navigate(`/folder/${parentCrumb.id}`)}
+                aria-label='Up one level'
+              >
+                <IconArrowUp size='1.3rem' />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <ThemeIcon variant='light' size='xl' radius='md'>
             <IconFolder size='1.6rem' />
           </ThemeIcon>
@@ -634,8 +652,8 @@ export function Component() {
               {folder.name}
             </Title>
             <Text size='sm' c='dimmed'>
+              {folderCount > 0 ? `${folderCount} ${folderCount === 1 ? 'folder' : 'folders'} · ` : ''}
               {totalRecords} {totalRecords === 1 ? 'file' : 'files'}
-              {children.length > 0 ? ` · ${children.length} subfolders` : ''}
             </Text>
           </div>
         </Group>
@@ -738,7 +756,10 @@ export function Component() {
 
       {totalRecords > 0 && (
         <Group justify='space-between' align='center' mt='lg'>
-          <Text size='sm' c='dimmed'>{`${from} – ${to} of ${totalRecords} files`}</Text>
+          <Text size='sm' c='dimmed'>
+            {`${from} – ${to} of ${totalRecords} ${totalRecords === 1 ? 'file' : 'files'}`}
+            {folderCount > 0 ? ` · ${folderCount} ${folderCount === 1 ? 'folder' : 'folders'}` : ''}
+          </Text>
 
           <Group gap='sm'>
             <Select

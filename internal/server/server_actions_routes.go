@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1119,21 +1120,6 @@ func (a *App) sactFolderZip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := a.Store.Pool.Query(ctx,
-		`SELECT name, original_name FROM files WHERE folder_id = $1 ORDER BY created_at ASC`, folderID)
-	if err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to list files")
-		return
-	}
-	files := make([]expFileRow, 0)
-	for rows.Next() {
-		var f expFileRow
-		if scanErr := rows.Scan(&f.Name, &f.OriginalName); scanErr == nil {
-			files = append(files, f)
-		}
-	}
-	rows.Close()
-
 	zipName := name
 	if strings.TrimSpace(zipName) == "" {
 		zipName = "folder"
@@ -1143,10 +1129,90 @@ func (a *App) sactFolderZip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+expSanitizeFilename(zipName)+"\"")
 
+	// Recursively gather files across the public folder tree so "Download all"
+	// includes subfolders, preserving their structure as paths in the archive.
+	var files []sactZipFile
+	a.sactCollectZipFiles(ctx, folderID, "", 0, &files)
+
 	zw := zip.NewWriter(w)
-	a.expWriteFilesToZip(zw, files)
+	seen := make(map[string]int, len(files))
+	for _, f := range files {
+		if a.DS == nil {
+			break
+		}
+		rc, gerr := a.DS.Get(f.name)
+		if gerr != nil || rc == nil {
+			a.Log.Warn("public folder zip: file missing from datasource", "name", f.name, "err", gerr)
+			continue
+		}
+		entry := expDedupeName(seen, f.rel+expEntryName(expFileRow{Name: f.name, OriginalName: f.original}))
+		zwr, cerr := zw.Create(entry)
+		if cerr != nil {
+			_ = rc.Close()
+			continue
+		}
+		_, _ = io.Copy(zwr, rc)
+		_ = rc.Close()
+	}
 	if err := zw.Close(); err != nil {
 		a.Log.Warn("public folder zip: finalize failed", "folder", folderID, "err", err)
+	}
+}
+
+// sactZipFile is one file destined for the folder "download all" archive, with
+// its path prefix within the zip (e.g. "subtest/").
+type sactZipFile struct {
+	name     string
+	original *string
+	rel      string
+}
+
+// sactCollectZipFiles recursively gathers files in a PUBLIC folder tree. It
+// descends only into public, NON-password-protected subfolders: a private or
+// locked subfolder's contents must be unlocked separately and are never bundled
+// into the parent's archive (so the zip can't be used to bypass protection).
+// depth caps recursion as a cycle/abuse guard.
+func (a *App) sactCollectZipFiles(ctx context.Context, folderID, prefix string, depth int, out *[]sactZipFile) {
+	if depth > 32 {
+		return
+	}
+
+	rows, err := a.Store.Pool.Query(ctx,
+		`SELECT name, original_name FROM files WHERE folder_id=$1 ORDER BY created_at ASC`, folderID)
+	if err == nil {
+		for rows.Next() {
+			var f sactZipFile
+			if scanErr := rows.Scan(&f.name, &f.original); scanErr == nil {
+				f.rel = prefix
+				*out = append(*out, f)
+			}
+		}
+		rows.Close()
+	}
+
+	crows, err := a.Store.Pool.Query(ctx,
+		`SELECT id, name FROM folders
+		   WHERE parent_id=$1 AND public=true AND (password IS NULL OR password='')
+		   ORDER BY name ASC`, folderID)
+	if err != nil {
+		return
+	}
+	type child struct{ id, name string }
+	var kids []child
+	for crows.Next() {
+		var c child
+		if scanErr := crows.Scan(&c.id, &c.name); scanErr == nil {
+			kids = append(kids, c)
+		}
+	}
+	crows.Close()
+
+	for _, c := range kids {
+		seg := expSanitizeFilename(c.name)
+		if strings.TrimSpace(c.name) == "" {
+			seg = "folder"
+		}
+		a.sactCollectZipFiles(ctx, c.id, prefix+seg+"/", depth+1, out)
 	}
 }
 
