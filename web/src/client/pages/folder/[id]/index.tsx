@@ -16,7 +16,6 @@ import {
   Container,
   Group,
   Image,
-  Menu,
   Pagination,
   Select,
   SegmentedControl,
@@ -36,9 +35,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconCopy,
-  IconDots,
   IconDownload,
-  IconExternalLink,
   IconFolder,
   IconLayoutGrid,
   IconLink,
@@ -150,11 +147,10 @@ function PublicFolderCard({ folder }: { folder: Partial<Folder> }) {
 // Per-file actions (shared between list rows and grid cards)
 // ---------------------------------------------------------------------------
 
-function useCopyLink() {
+function useCopyUrl() {
   const clipboard = useClipboard({ timeout: 1500 });
 
-  return (file: PublicFolderFile) => {
-    const url = shareUrl(file);
+  return (url: string) => {
     clipboard.copy(url);
     notifications.show({
       title: 'Link copied',
@@ -163,6 +159,27 @@ function useCopyLink() {
       icon: <IconLink size='1rem' />,
     });
   };
+}
+
+/** Absolute, shareable link to a subfolder (for the clipboard). */
+function folderShareUrl(folder: Partial<Folder>) {
+  return `${window.location.origin}/folder/${folder.id}`;
+}
+
+/**
+ * Sort subfolders client-side to mirror the active column. Folders have no size,
+ * so a "size" sort falls back to name. Folders are always rendered above files.
+ */
+function sortFolders(folders: Partial<Folder>[], sortBy: SortColumn, order: SortOrder) {
+  const dir = order === 'asc' ? 1 : -1;
+  return [...folders].sort((a, b) => {
+    if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+      const av = new Date((a[sortBy] as string | Date | undefined) ?? 0).getTime();
+      const bv = new Date((b[sortBy] as string | Date | undefined) ?? 0).getTime();
+      return dir * (av - bv);
+    }
+    return dir * String(a.name ?? '').localeCompare(String(b.name ?? ''));
+  });
 }
 
 function FileActions({ file, copyLink }: { file: PublicFolderFile; copyLink: (f: PublicFolderFile) => void }) {
@@ -186,32 +203,77 @@ function FileActions({ file, copyLink }: { file: PublicFolderFile; copyLink: (f:
           <IconDownload size='1.1rem' />
         </ActionIcon>
       </Tooltip>
-
-      <Menu shadow='md' position='bottom-end' withArrow>
-        <Menu.Target>
-          <ActionIcon variant='subtle' color='gray' aria-label='More actions'>
-            <IconDots size='1.1rem' />
-          </ActionIcon>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item
-            leftSection={<IconExternalLink size='1rem' />}
-            component='a'
-            href={previewUrl(file)}
-            target='_blank'
-            rel='noopener noreferrer'
-          >
-            Open
-          </Menu.Item>
-          <Menu.Item leftSection={<IconLink size='1rem' />} onClick={() => copyLink(file)}>
-            Copy link
-          </Menu.Item>
-          <Menu.Item leftSection={<IconDownload size='1rem' />} component='a' href={downloadUrl(file)} download>
-            Download
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
     </Group>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subfolder row (list view) — rendered above files, like a file explorer
+// ---------------------------------------------------------------------------
+
+function FolderRow({
+  folder,
+  onOpen,
+  onCopy,
+}: {
+  folder: Partial<Folder>;
+  onOpen: (id: string) => void;
+  onCopy: (folder: Partial<Folder>) => void;
+}) {
+  return (
+    <Table.Tr className={styles.row} style={{ cursor: 'pointer' }} onClick={() => onOpen(folder.id!)}>
+      <Table.Td>
+        <Group gap='sm' wrap='nowrap' className={styles.nameButton}>
+          <ThemeIcon variant='light' size='lg' radius='md' style={{ flexShrink: 0 }}>
+            <IconFolder size='1.2rem' />
+          </ThemeIcon>
+          <Text size='sm' fw={600} truncate='end' style={{ minWidth: 0 }}>
+            {folder.name}
+          </Text>
+        </Group>
+      </Table.Td>
+      <Table.Td visibleFrom='sm'>
+        <Text size='sm' c='dimmed'>
+          {folder.createdAt ? dayjs(folder.createdAt).format('MMM D, YYYY') : '—'}
+        </Text>
+      </Table.Td>
+      <Table.Td visibleFrom='xs'>
+        <Text size='sm' c='dimmed'>
+          —
+        </Text>
+      </Table.Td>
+      <Table.Td visibleFrom='md'>
+        <Text size='sm' c='dimmed'>
+          {folder.updatedAt ? dayjs(folder.updatedAt).format('MMM D, YYYY') : '—'}
+        </Text>
+      </Table.Td>
+      <Table.Td>
+        <Group gap={4} wrap='nowrap' justify='flex-end' onClick={(e) => e.stopPropagation()}>
+          <Tooltip label='Copy link' withArrow>
+            <ActionIcon
+              variant='subtle'
+              color='gray'
+              onClick={() => onCopy(folder)}
+              aria-label='Copy folder link'
+            >
+              <IconLink size='1.1rem' />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label='Download (zip)' withArrow>
+            <ActionIcon
+              variant='subtle'
+              color='gray'
+              component='a'
+              href={zipUrl(folder.id!)}
+              download
+              aria-label='Download folder as zip'
+            >
+              <IconDownload size='1.1rem' />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
   );
 }
 
@@ -260,16 +322,22 @@ function SortableTh({
 
 function FileListView({
   files,
+  folders,
   sortBy,
   order,
   onSort,
   copyLink,
+  onOpenFolder,
+  onCopyFolder,
 }: {
   files: PublicFolderFile[];
+  folders: Partial<Folder>[];
   sortBy: SortColumn;
   order: SortOrder;
   onSort: (column: SortColumn) => void;
   copyLink: (f: PublicFolderFile) => void;
+  onOpenFolder: (id: string) => void;
+  onCopyFolder: (folder: Partial<Folder>) => void;
 }) {
   return (
     <Table.ScrollContainer minWidth={640}>
@@ -312,6 +380,14 @@ function FileListView({
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
+          {folders.map((folder) => (
+            <FolderRow
+              key={`folder-${folder.id}`}
+              folder={folder}
+              onOpen={onOpenFolder}
+              onCopy={onCopyFolder}
+            />
+          ))}
           {files.map((file) => {
             const Icon = fileIcon(file.type);
             return (
@@ -375,13 +451,18 @@ function FileListView({
 
 function FileGridView({
   files,
+  folders,
   copyLink,
 }: {
   files: PublicFolderFile[];
+  folders: Partial<Folder>[];
   copyLink: (f: PublicFolderFile) => void;
 }) {
   return (
     <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, lg: 4 }} spacing='md'>
+      {folders.map((folder) => (
+        <PublicFolderCard key={`folder-${folder.id}`} folder={folder} />
+      ))}
       {files.map((file) => {
         const Icon = fileIcon(file.type);
         const thumb = thumbnailUrl(file);
@@ -445,7 +526,9 @@ function FileGridView({
 export function Component() {
   const { initial } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
-  const copyLink = useCopyLink();
+  const copy = useCopyUrl();
+  const copyFile = (f: PublicFolderFile) => copy(shareUrl(f));
+  const copyFolder = (fl: Partial<Folder>) => copy(folderShareUrl(fl));
 
   const [, setSearchParams] = useSearchParams();
   const [page, setPage] = useQueryState('page', parseAsInteger.withDefault(1));
@@ -508,6 +591,11 @@ export function Component() {
   const children = (folder.children ?? []) as Partial<Folder>[];
   const from = totalRecords === 0 ? 0 : (page - 1) * perpage + 1;
   const to = Math.min(page * perpage, totalRecords);
+
+  // Folders are shown above files, sorted, on the first page only (they are not
+  // paginated, so they would otherwise repeat on every page).
+  const sortedFolders = page === 1 ? sortFolders(children, sortBy, order) : [];
+  const hasContent = totalRecords > 0 || children.length > 0;
 
   const handleSort = (column: SortColumn) => {
     if (sortBy === column) {
@@ -578,23 +666,9 @@ export function Component() {
         </Group>
       </Group>
 
-      {children.length > 0 && (
+      {hasContent && (
         <>
-          <Title order={3} mt='xl' mb='sm'>
-            Subfolders
-          </Title>
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing='md'>
-            {children.map((child) => (
-              <PublicFolderCard key={child.id} folder={child} />
-            ))}
-          </SimpleGrid>
-        </>
-      )}
-
-      {totalRecords > 0 && (
-        <>
-          <Group justify='space-between' align='center' mt='xl' mb='sm'>
-            <Title order={3}>Files</Title>
+          <Group justify='flex-end' align='center' mt='xl' mb='sm'>
             <SegmentedControl
               size='sm'
               value={view}
@@ -625,13 +699,16 @@ export function Component() {
           {view === 'list' ? (
             <FileListView
               files={files}
+              folders={sortedFolders}
               sortBy={sortBy}
               order={order}
               onSort={handleSort}
-              copyLink={copyLink}
+              copyLink={copyFile}
+              onOpenFolder={(id) => navigate(`/folder/${id}`)}
+              onCopyFolder={copyFolder}
             />
           ) : (
-            <FileGridView files={files} copyLink={copyLink} />
+            <FileGridView files={files} folders={sortedFolders} copyLink={copyFile} />
           )}
         </>
       )}
