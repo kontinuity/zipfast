@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Upstream Zipline
+    url: https://github.com/diced/zipline
+    about: zipfast reimplements Zipline — upstream behavior and docs live here.

@@ -1,0 +1,69 @@
+name: Zipline parity check
+
+# Good-to-have version alignment: zipfast keeps its own version line but tracks
+# which upstream Zipline release it has reached parity with (the ZIPLINE_PARITY
+# file). This job checks weekly whether diced/zipline has shipped a newer
+# release and, if so, opens a tracking issue so the changes can be ported.
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare parity to latest zipline release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          current="unknown"
+          [ -f ZIPLINE_PARITY ] && current="$(head -n1 ZIPLINE_PARITY | tr -d '[:space:]')"
+
+          latest_tag="$(gh api repos/diced/zipline/releases/latest --jq .tag_name)"
+          latest="${latest_tag#v}"
+
+          echo "zipfast tracks zipline v${current}; latest upstream is v${latest}"
+          if [ "${current}" = "${latest}" ]; then
+            echo "Up to date — nothing to do."
+            exit 0
+          fi
+
+          # Ensure the label exists (upsert), then dedupe by open issues.
+          gh label create zipline-sync --color BFD4F2 \
+            --description "Upstream Zipline parity tracking" --force >/dev/null 2>&1 || true
+
+          open_count="$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --state open --label zipline-sync \
+            --search "in:title ${latest}" --json number --jq 'length')"
+          if [ "${open_count}" != "0" ]; then
+            echo "A tracking issue for v${latest} is already open."
+            exit 0
+          fi
+
+          {
+            echo "Upstream **diced/zipline** published **v${latest}**. Zipfast currently tracks **v${current}** (see the \`ZIPLINE_PARITY\` file)."
+            echo ""
+            echo "- Compare upstream: https://github.com/diced/zipline/compare/v${current}...${latest_tag}"
+            echo "- Release notes: https://github.com/diced/zipline/releases/tag/${latest_tag}"
+            echo ""
+            echo "**To close the gap:**"
+            echo "1. Review the upstream diff in the compare link above."
+            echo "2. Port the relevant changes into zipfast."
+            echo "3. Bump \`ZIPLINE_PARITY\` to \`${latest}\`."
+            echo "4. Cut a zipfast release tag (independent version line)."
+          } > issue-body.md
+
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Zipline parity: upstream released v${latest} (zipfast tracks v${current})" \
+            --label zipline-sync \
+            --body-file issue-body.md

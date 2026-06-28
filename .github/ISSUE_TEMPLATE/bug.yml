@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report a reproducible bug in zipfast
+title: "Bug: [short description]"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Bug description
+      description: What you were doing, what happened, and what you expected. Include logs or error messages if you have them.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: How is zipfast being run?
+      options:
+        - Docker image (GHCR / Docker Hub)
+        - Prebuilt binary
+        - Built from source (make build)
+        - Other (describe above)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: zipfast version
+      description: Image tag, or the output of `zipfast --version`.
+      placeholder: "e.g. 0.1.0, or main-abc1234"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste server logs. Run with LOG_LEVEL=debug for more detail. Redact any secrets first.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS / architecture, Postgres version, datasource (local or S3).
+      placeholder: "e.g. Linux arm64, Postgres 16, S3"
+    validations:
+      required: false

@@ -1,0 +1,222 @@
+name: Release
+
+# Cut a release by pushing a tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Publishes versioned multi-arch images (+ `latest`) and a GitHub Release.
+# zipfast uses its own version line; the tracked zipline parity version is
+# read from ZIPLINE_PARITY and recorded as an image label + in the notes.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without leading v (e.g. 0.1.0)"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  push:
+    name: build & push (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
+    env:
+      # secrets can't be read in a step-level `if:`, so resolve once here.
+      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version & parity
+        id: meta
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          parity="unknown"
+          [ -f ZIPLINE_PARITY ] && parity="$(head -n1 ZIPLINE_PARITY | tr -d '[:space:]')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "parity=${parity}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: env.HAS_DOCKERHUB == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "${GHCR_IMAGE}:${VERSION}-${ARCH}"
+            if [ -n "${DOCKERHUB_USERNAME}" ]; then
+              echo "${DOCKERHUB_USERNAME}/zipfast:${VERSION}-${ARCH}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+          provenance: false
+          build-args: |
+            ZIPFAST_VERSION=${{ steps.meta.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            sh.zipfast.zipline-parity=${{ steps.meta.outputs.parity }}
+          tags: ${{ steps.tags.outputs.tags }}
+
+  manifest:
+    name: multi-arch manifests
+    runs-on: ubuntu-24.04
+    needs: push
+    permissions:
+      contents: read
+      packages: write
+    env:
+      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then version="${INPUT_VERSION}"; else version="${GITHUB_REF_NAME#v}"; fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: env.HAS_DOCKERHUB == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create & push multi-arch manifests
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          combine() {
+            repo="$1"
+            for tag in "${VERSION}" "latest"; do
+              docker buildx imagetools create -t "${repo}:${tag}" \
+                "${repo}:${VERSION}-amd64" \
+                "${repo}:${VERSION}-arm64"
+            done
+          }
+          combine "${GHCR_IMAGE}"
+          if [ -n "${DOCKERHUB_USERNAME}" ]; then
+            combine "${DOCKERHUB_USERNAME}/zipfast"
+          fi
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-24.04
+    needs: manifest
+    # Only create a Release for real tag pushes, not manual rebuilds.
+    if: ${{ github.event_name == 'push' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve meta
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          parity="unknown"
+          [ -f ZIPLINE_PARITY ] && parity="$(head -n1 ZIPLINE_PARITY | tr -d '[:space:]')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "parity=${parity}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: zipfast ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Zipfast ${{ github.ref_name }} — a memory-optimized Go reimplementation of Zipline.
+
+            **Tracks Zipline feature parity:** v${{ steps.meta.outputs.parity }}
+
+            ### Container images
+            - `ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}`
+            - `ghcr.io/${{ github.repository }}:latest`
+
+            Docker Hub mirrors are published too when `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets are configured.
+
+  dockerhub-readme:
+    name: Sync Docker Hub overview
+    runs-on: ubuntu-24.04
+    # Runs after images are published so the Docker Hub repo already exists.
+    needs: manifest
+    permissions:
+      contents: read
+    env:
+      # The description API needs the account password / an admin-scoped PAT
+      # (DOCKERHUB_PASSWORD), not the push token. Resolve the guard once here
+      # since secrets can't be read in a step `if:`.
+      HAS_DOCKERHUB_DESC: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update Docker Hub description
+        if: env.HAS_DOCKERHUB_DESC == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/zipfast
+          short-description: "Memory-optimized Go reimplementation of Zipline (file & URL sharing)."
+          readme-filepath: ./DOCKER.md

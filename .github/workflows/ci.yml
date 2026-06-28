@@ -1,0 +1,109 @@
+name: CI
+
+# Pull-request / merge gate. Every PR into main (and every push to main) must
+# pass these checks before it can be merged. Keep this fast so review cycles
+# stay short.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref so rapid PR pushes don't pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go — fmt / vet / build / test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt check
+        run: |
+          out=$(gofmt -l ./internal ./cmd)
+          if [ -n "$out" ]; then
+            echo "::error::These files are not gofmt-clean:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build binaries
+        run: |
+          ver="ci-${GITHUB_SHA::7}"
+          go build -trimpath -ldflags "-s -w -X main.version=${ver}" -o /tmp/zipfast ./cmd/zipfast
+          go build -trimpath -ldflags "-s -w -X main.version=${ver}" -o /tmp/zipfastctl ./cmd/zipfastctl
+
+      - name: Test
+        run: go test ./...
+
+  golangci:
+    name: golangci-lint (advisory)
+    runs-on: ubuntu-24.04
+    # Advisory only until a tuned .golangci.yml lands — never blocks a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  web:
+    name: Web — SPA build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: web
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build
+        working-directory: web
+        run: pnpm run build
+
+  docker:
+    name: Docker — image builds (no push)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (amd64, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ZIPFAST_VERSION=ci-${{ github.sha }}

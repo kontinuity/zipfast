@@ -1,0 +1,9 @@
+# Default owner for everything in the repo. PRs request review from this owner
+# automatically. Pair with a branch-protection rule on `main` that requires a
+# review + passing CI before merge.
+*       @kontinuity
+
+# Build & release pipeline.
+/.github/        @kontinuity
+/Dockerfile      @kontinuity
+/Makefile        @kontinuity
