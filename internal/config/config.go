@@ -286,20 +286,6 @@ func (c *Config) applyEnv() {
 	c.Datasource.S3.ForcePathStyle = envBool("DATASOURCE_S3_FORCE_PATH_STYLE", c.Datasource.S3.ForcePathStyle)
 	c.Datasource.S3.Subdirectory = envStr("DATASOURCE_S3_SUBDIRECTORY", c.Datasource.S3.Subdirectory)
 
-	// Backblaze B2 speaks the S3 API. Map the friendlier B2_* vars onto the S3
-	// datasource and default the endpoint to s3.<region>.backblazeb2.com.
-	if strings.EqualFold(c.Datasource.Type, "b2") {
-		c.Datasource.S3.AccessKeyID = envStr("DATASOURCE_B2_KEY_ID", c.Datasource.S3.AccessKeyID)
-		c.Datasource.S3.SecretAccessKey = envStr("DATASOURCE_B2_APPLICATION_KEY", c.Datasource.S3.SecretAccessKey)
-		c.Datasource.S3.Bucket = envStr("DATASOURCE_B2_BUCKET", c.Datasource.S3.Bucket)
-		c.Datasource.S3.Region = envStr("DATASOURCE_B2_REGION", c.Datasource.S3.Region)
-		c.Datasource.S3.Endpoint = envStr("DATASOURCE_B2_ENDPOINT", c.Datasource.S3.Endpoint)
-		c.Datasource.S3.Subdirectory = envStr("DATASOURCE_B2_SUBDIRECTORY", c.Datasource.S3.Subdirectory)
-		if c.Datasource.S3.Endpoint == "" && c.Datasource.S3.Region != "" {
-			c.Datasource.S3.Endpoint = "s3." + c.Datasource.S3.Region + ".backblazeb2.com"
-		}
-	}
-
 	c.Files.Route = envStr("FILES_ROUTE", c.Files.Route)
 	c.Files.Length = envInt("FILES_LENGTH", c.Files.Length)
 	c.Files.DefaultFormat = envStr("FILES_DEFAULT_FORMAT", c.Files.DefaultFormat)

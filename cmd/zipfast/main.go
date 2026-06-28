@@ -121,8 +121,10 @@ func buildDatasource(cfg *config.Config) (datasource.Datasource, error) {
 	switch cfg.Datasource.Type {
 	case "local", "":
 		return datasource.NewLocal(cfg.Datasource.Local.Directory)
-	case "s3", "b2":
-		// Backblaze B2 is served through the S3-compatible datasource (see config.applyEnv).
+	case "s3":
+		// S3-compatible storage (AWS S3, MinIO, Backblaze B2, etc.). For Backblaze,
+		// set DATASOURCE_S3_ENDPOINT to the bucket's S3 endpoint (e.g.
+		// s3.us-west-004.backblazeb2.com), as in upstream Zipline.
 		return datasource.NewS3(cfg.Datasource.S3)
 	default:
 		return nil, fmt.Errorf("unsupported datasource type %q", cfg.Datasource.Type)

@@ -67,19 +67,18 @@ Required: `CORE_SECRET` (≥16 chars) and `DATABASE_URL` (or the 5 `DATABASE_*` 
 Set `DATASOURCE_TYPE`:
 
 - **`local`** — `DATASOURCE_LOCAL_DIRECTORY` (default `./uploads`).
-- **`s3`** — any S3-compatible store (AWS, MinIO, Ceph…): `DATASOURCE_S3_ACCESS_KEY_ID`, `DATASOURCE_S3_SECRET_ACCESS_KEY`, `DATASOURCE_S3_BUCKET`, `DATASOURCE_S3_REGION`, optional `DATASOURCE_S3_ENDPOINT` (host only), `DATASOURCE_S3_FORCE_PATH_STYLE`, `DATASOURCE_S3_SUBDIRECTORY`.
-- **`b2` (Backblaze B2)** — uses B2's S3-compatible API over HTTPS:
+- **`s3`** — any S3-compatible store (AWS, MinIO, Ceph, **Backblaze B2**…): `DATASOURCE_S3_ACCESS_KEY_ID`, `DATASOURCE_S3_SECRET_ACCESS_KEY`, `DATASOURCE_S3_BUCKET`, `DATASOURCE_S3_REGION`, optional `DATASOURCE_S3_ENDPOINT` (host only), `DATASOURCE_S3_FORCE_PATH_STYLE`, `DATASOURCE_S3_SUBDIRECTORY`.
+
+  For **Backblaze B2**, use `s3` and point the endpoint at your bucket's S3 endpoint (exactly as in upstream Zipline — there is no separate `b2` type):
 
   ```bash
-  DATASOURCE_TYPE=b2
-  DATASOURCE_B2_KEY_ID=<application keyID>
-  DATASOURCE_B2_APPLICATION_KEY=<applicationKey>
-  DATASOURCE_B2_BUCKET=<bucket>
-  DATASOURCE_B2_REGION=us-west-004        # the region in your bucket's S3 endpoint
-  # DATASOURCE_B2_ENDPOINT=               # optional; defaults to s3.<region>.backblazeb2.com
+  DATASOURCE_TYPE=s3
+  DATASOURCE_S3_ENDPOINT=s3.us-west-004.backblazeb2.com   # your bucket's S3 endpoint
+  DATASOURCE_S3_REGION=us-west-004
+  DATASOURCE_S3_BUCKET=<bucket>
+  DATASOURCE_S3_ACCESS_KEY_ID=<application keyID>
+  DATASOURCE_S3_SECRET_ACCESS_KEY=<applicationKey>
   ```
-
-  B2 is routed through the same (tested) S3 datasource — the `B2_*` vars map onto the S3 client and the endpoint auto-derives to `s3.<region>.backblazeb2.com`. Create an Application Key in the B2 console; the **keyID** is the access key and the **applicationKey** is the secret. The bucket must allow the key.
 
 Object keys match Zipline (`{name}`, thumbnails `.thumbnail.{id}`), so existing data resolves unchanged.
 
@@ -112,7 +111,7 @@ zipfastctl version
 - **Rate limiting**: per-key token-bucket middleware (admin/allowlist bypass), configurable.
 - **Thumbnails**: background generator for videos (bounded transient workers, ffmpeg child process).
 - **Static SPA serving**: serves a built SPA from `ZIPFAST_WEB_DIR` with index.html fallback + `/config.js` runtime API base (or host the SPA on a CDN).
-- Datasources: Local, S3, **Backblaze B2**.
+- Datasources: Local, S3 (incl. Backblaze B2 via the S3 endpoint).
 - Tasks: deleteFiles, maxViews, clearInvites, metrics. CLI: read-config/list-users/set-user.
 
 **Partial / notes**
