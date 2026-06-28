@@ -22,6 +22,8 @@ import (
 // Zipline auth routes so the existing SPA and clients keep working.
 func (a *App) registerAuthRoutes(r chi.Router) {
 	r.Post("/api/auth/login", a.handleAuthLogin)
+	// The client (and upstream Zipline) log out via GET; also accept POST.
+	r.Get("/api/auth/logout", a.handleAuthLogout)
 	r.Post("/api/auth/logout", a.handleAuthLogout)
 	r.Post("/api/auth/register", a.handleAuthRegister)
 	r.Post("/api/setup", a.handleAuthSetup)
