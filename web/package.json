@@ -108,7 +108,7 @@
     "sass": "^1.98.0",
     "tsc-alias": "^1.8.17",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.3"
   },
