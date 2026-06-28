@@ -38,7 +38,7 @@ jobs:
       # secrets can't be read in a step-level `if:`, so resolve once here.
       HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve version & parity
         id: meta
@@ -115,7 +115,7 @@ jobs:
     env:
       HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve version
         id: meta
@@ -169,7 +169,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve meta
         id: meta
@@ -209,7 +209,7 @@ jobs:
       # since secrets can't be read in a step `if:`.
       HAS_DOCKERHUB_DESC: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Update Docker Hub description
         if: env.HAS_DOCKERHUB_DESC == 'true'

@@ -32,7 +32,7 @@ jobs:
       # secrets can't be read in a step-level `if:`, so resolve once here.
       HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Short SHA
         id: sha
@@ -94,7 +94,7 @@ jobs:
     env:
       HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Short SHA
         id: sha
