@@ -85,7 +85,7 @@ jobs:
           # The packageManager field lives in web/package.json (repo root is Go).
           package_json_file: web/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
