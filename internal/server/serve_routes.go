@@ -41,9 +41,11 @@ func (a *App) registerServeRoutes(r chi.Router) {
 		http.Redirect(w, req, "/raw/"+chi.URLParam(req, "id"), http.StatusMovedPermanently)
 	})
 
-	// Embed / meta view pages.
+	// View pages (server-rendered: media viewer + password form).
 	r.Get("/view/{id}", a.handleViewFile)
+	r.Post("/view/{id}", a.handleViewFilePassword)
 	r.Get("/view/url/{id}", a.handleViewURL)
+	r.Post("/view/url/{id}", a.handleViewURLPassword)
 
 	// Small static endpoints.
 	r.Get("/robots.txt", a.serveRobotsTxt)
