@@ -37,7 +37,7 @@
     "@prisma/internals": "6.13.0",
     "@prisma/migrate": "6.13.0",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
     "@smithy/node-http-handler": "^4.7.2",
     "@tabler/icons-react": "^3.44.0",
     "archiver": "7.0.1",
