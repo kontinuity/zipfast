@@ -198,8 +198,8 @@ importers:
         specifier: ^7.15.0
         version: 7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react-virtuoso:
-        specifier: ^4.18.7
-        version: 4.18.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^4.18.10
+        version: 4.18.10(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
@@ -358,6 +358,7 @@ packages:
   '@aws-sdk/core@3.974.9':
     resolution: {integrity: sha512-bXxosFunr+v/kqNb99r1NRkrVBha7CG036fRSpWGbC1A/e363XFQN6wcZMx7MYTdRr1tYwNnkrWX2xc1rT3BCQ==}
     engines: {node: '>=20.0.0'}
+    deprecated: Deprecated due to an error deserialization bug in JSON 1.0 protocol services, see https://github.com/aws/aws-sdk-js-v3/pull/8031. Newer version available.
 
   '@aws-sdk/crc64-nvme@3.972.8':
     resolution: {integrity: sha512-fVfUCL/Xh2zINYMPZvj+iBn6XWouQf0DAnjaWCI9MkmqXzL2Iy5FoQB8O7syFe6gN6AH1ecDDU58T51Ou0kFkA==}
@@ -3980,8 +3981,8 @@ packages:
       react: '>=16.6.0'
       react-dom: '>=16.6.0'
 
-  react-virtuoso@4.18.7:
-    resolution: {integrity: sha512-xNF5zDGEEIMB7cKwcen/pLig0YDf6OnfFrVgKFa7sHPf9fRem0CaLshyObbBcP88jzn0enavL39EgplgdyT21g==}
+  react-virtuoso@4.18.10:
+    resolution: {integrity: sha512-P6GIZ7kWAPOYB2H16yRQNgy+VF9pJOuTFw1EUc1EAtCj5WxVSAF1Sql3x3fbLwaLeBFsiPnu+3U9o6sIOyTdFw==}
     peerDependencies:
       react: '>=16 || >=17 || >= 18 || >= 19'
       react-dom: '>=16 || >=17 || >= 18 || >=19'
@@ -4030,6 +4031,7 @@ packages:
   recharts@2.15.4:
     resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
     engines: {node: '>=14'}
+    deprecated: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
     peerDependencies:
       react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8733,7 +8735,7 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
 
-  react-virtuoso@4.18.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+  react-virtuoso@4.18.10(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
     dependencies:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
