@@ -599,6 +599,14 @@ func (a *App) uexGetFileRaw(w http.ResponseWriter, r *http.Request) {
 
 	f, err := a.userLoadOwnedFile(r.Context(), id, u.ID)
 	if err != nil {
+		// The id may be a thumbnail object key for one of the user's own files.
+		// The owner is authenticated and ownership-checked, so no folder gate.
+		if fid, terr := a.Store.GetThumbnailFileID(r.Context(), id); terr == nil && fid != "" {
+			if parent, perr := a.userLoadOwnedFile(r.Context(), fid, u.ID); perr == nil && parent != nil {
+				a.streamThumbnail(w, r, id)
+				return
+			}
+		}
 		a.userHandleLookupErr(w, err, "file")
 		return
 	}

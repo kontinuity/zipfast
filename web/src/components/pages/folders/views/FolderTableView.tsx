@@ -23,6 +23,7 @@ import useSWR from 'swr';
 import { copyFolderUrl, editFolderUploads, editFolderVisibility } from '../actions';
 import DeleteFolderModal from '../modals/DeleteFolderModal';
 import EditFolderNameModal from '../modals/EditFolderNameModal';
+import EditFolderPasswordModal from '../modals/EditFolderPasswordModal';
 import MoveFolderModal from '../modals/MoveFolderModal';
 import ViewFilesModal from '../modals/ViewFilesModal';
 
@@ -37,12 +38,14 @@ function FolderDotsMenu({
   setDeleteOpen,
   setMoveOpen,
   setEditNameOpen,
+  setPasswordOpen,
 }: {
   folder: Folder;
   onNavigate: (folderId: string) => void;
   setDeleteOpen: (folder: Folder) => void;
   setMoveOpen: (folder: Folder) => void;
   setEditNameOpen: (folder: Folder) => void;
+  setPasswordOpen: (folder: Folder) => void;
 }) {
   const [opened, setOpened] = useState(false);
 
@@ -99,6 +102,12 @@ function FolderDotsMenu({
           Edit Name
         </Menu.Item>
         <Menu.Item
+          leftSection={folder.passwordProtected ? <IconLock size='1rem' /> : <IconLockOpen size='1rem' />}
+          onClick={withoutPropagation(() => setPasswordOpen(folder))}
+        >
+          {folder.passwordProtected ? 'Manage password' : 'Set password'}
+        </Menu.Item>
+        <Menu.Item
           leftSection={<IconTrashFilled size='1rem' />}
           color='red'
           onClick={withoutPropagation(() => setDeleteOpen(folder))}
@@ -130,6 +139,7 @@ export default function FolderTableView({
   });
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [editNameOpen, setEditNameOpen] = useState<Folder | null>(null);
+  const [passwordOpen, setPasswordOpen] = useState<Folder | null>(null);
   const [moveOpen, setMoveOpen] = useState<Folder | null>(null);
   const [deleteOpen, setDeleteOpen] = useState<Folder | null>(null);
 
@@ -162,6 +172,12 @@ export default function FolderTableView({
         onClose={() => setEditNameOpen(null)}
       />
 
+      <EditFolderPasswordModal
+        opened={!!passwordOpen}
+        folder={passwordOpen}
+        onClose={() => setPasswordOpen(null)}
+      />
+
       <MoveFolderModal opened={!!moveOpen} folder={moveOpen} onClose={() => setMoveOpen(null)} />
 
       <DeleteFolderModal opened={!!deleteOpen} folder={deleteOpen} onClose={() => setDeleteOpen(null)} />
@@ -182,6 +198,13 @@ export default function FolderTableView({
                 <Group gap='xs'>
                   <IconFolder size='1rem' />
                   <Text>{folder.name}</Text>
+                  {folder.passwordProtected && (
+                    <Tooltip label='Password protected'>
+                      <Badge size='xs' color='yellow' variant='light' leftSection={<IconLock size='0.7rem' />}>
+                        Locked
+                      </Badge>
+                    </Tooltip>
+                  )}
                   {(folder._count?.children ?? 0) > 0 && (
                     <Badge size='xs' variant='light'>
                       {folder._count?.children} subfolder{(folder._count?.children ?? 0) > 1 ? 's' : ''}
@@ -224,6 +247,7 @@ export default function FolderTableView({
                     setDeleteOpen={setDeleteOpen}
                     setMoveOpen={setMoveOpen}
                     setEditNameOpen={setEditNameOpen}
+                    setPasswordOpen={setPasswordOpen}
                   />
 
                   <Tooltip label='Copy folder link'>

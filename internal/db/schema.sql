@@ -74,8 +74,12 @@ CREATE TABLE IF NOT EXISTS folders (
   public        BOOLEAN NOT NULL DEFAULT false,
   allow_uploads BOOLEAN NOT NULL DEFAULT false,
   parent_id     TEXT REFERENCES folders(id) ON DELETE SET NULL,
-  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  password      TEXT
 );
+
+-- Additive migration for databases created before folder passwords existed.
+ALTER TABLE folders ADD COLUMN IF NOT EXISTS password TEXT;
 
 CREATE TABLE IF NOT EXISTS files (
   id            TEXT PRIMARY KEY,

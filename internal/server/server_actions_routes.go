@@ -910,13 +910,14 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 		allowUploads   bool
 		parentID       *string
 		userID         string
+		password       *string
 		createdAt      time.Time
 		updatedAt      time.Time
 	)
 	err := a.Store.Pool.QueryRow(ctx,
-		`SELECT id, created_at, updated_at, name, public, allow_uploads, parent_id, user_id
+		`SELECT id, created_at, updated_at, name, public, allow_uploads, parent_id, user_id, password
 		   FROM folders WHERE id = $1 OR name = $1 LIMIT 1`, id).
-		Scan(&folderID, &createdAt, &updatedAt, &name, &public, &allowUploads, &parentID, &userID)
+		Scan(&folderID, &createdAt, &updatedAt, &name, &public, &allowUploads, &parentID, &userID, &password)
 	if errors.Is(err, pgx.ErrNoRows) {
 		a.Error(w, http.StatusNotFound, "folder not found")
 		return
@@ -932,6 +933,18 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Password gate: a protected folder's listing requires a valid folder token
+	// (set as a cookie by the /folder/{id} gate page, or passed as ?token=).
+	protected := password != nil && *password != ""
+	if protected && !a.folderTokenValid(r, folderID) {
+		a.WriteJSON(w, http.StatusForbidden, map[string]any{
+			"error":             "folder is password protected",
+			"passwordProtected": true,
+			"folder":            map[string]any{"id": folderID, "name": name, "passwordProtected": true},
+		})
+		return
+	}
+
 	pageStr := r.URL.Query().Get("page")
 	perpage := queryInt(r, "perpage", 15)
 	if perpage <= 0 {
@@ -943,10 +956,11 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 	if pageStr == "" && allowUploads {
 		a.WriteJSON(w, http.StatusOK, map[string]any{
 			"folder": map[string]any{
-				"id":           folderID,
-				"name":         name,
-				"allowUploads": allowUploads,
-				"public":       public,
+				"id":                folderID,
+				"name":              name,
+				"allowUploads":      allowUploads,
+				"public":            public,
+				"passwordProtected": protected,
 			},
 			"page":  []any{},
 			"total": 0,
@@ -1000,14 +1014,15 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 	// Build the cleaned folder: _count, public children, and a public parent chain.
 	childCount, fileCount := a.sactFolderCounts(ctx, folderID)
 	folder := map[string]any{
-		"id":           folderID,
-		"createdAt":    createdAt,
-		"updatedAt":    updatedAt,
-		"name":         name,
-		"public":       public,
-		"allowUploads": allowUploads,
-		"parentId":     parentID,
-		"userId":       userID,
+		"id":                folderID,
+		"createdAt":         createdAt,
+		"updatedAt":         updatedAt,
+		"name":              name,
+		"public":            public,
+		"allowUploads":      allowUploads,
+		"parentId":          parentID,
+		"userId":            userID,
+		"passwordProtected": protected,
 		"_count": map[string]any{
 			"children": childCount,
 			"files":    fileCount,

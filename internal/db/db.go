@@ -116,6 +116,18 @@ func (s *Store) GetFileByID(ctx context.Context, id string) (*models.File, error
 	return scanFile(s.Pool.QueryRow(ctx, `SELECT `+fileColumns+` FROM files WHERE id=$1`, id))
 }
 
+// GetThumbnailFileID returns the parent file id for a thumbnail object key
+// (thumbnails.path), or ErrNotFound when no thumbnail row has that path. Used by
+// the raw routes to resolve and serve thumbnail objects, which are not file rows.
+func (s *Store) GetThumbnailFileID(ctx context.Context, path string) (string, error) {
+	var fid string
+	err := s.Pool.QueryRow(ctx, `SELECT file_id FROM thumbnails WHERE path=$1 LIMIT 1`, path).Scan(&fid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return fid, err
+}
+
 const fileColumns = `id, created_at, updated_at, deletes_at, name, original_name, size, type, views, max_views, favorite, password, anonymous, user_id, folder_id`
 
 func scanFile(row pgx.Row) (*models.File, error) {

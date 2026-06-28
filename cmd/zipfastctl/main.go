@@ -39,6 +39,7 @@ func rootCmd() *cobra.Command {
 		readConfigCmd(),
 		listUsersCmd(),
 		setUserCmd(),
+		setFolderPasswordCmd(),
 		versionCmd(),
 	)
 	return root
@@ -188,6 +189,65 @@ func setUserCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "the id of the user to update (required)")
+	return cmd
+}
+
+// setFolderPasswordCmd sets or clears the gate password on a folder, identified
+// by id or name. Passing no password (or an empty one) clears it.
+func setFolderPasswordCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set-folder-password <folderId|name> [password]",
+		Short: "Set or clear the password on a folder (empty clears)",
+		Long: "Set or clear the gate password on a public folder.\n\n" +
+			"Provide a password to protect the folder, or omit it (or pass an\n" +
+			"empty string) to remove protection. The folder is matched by id or name.",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ident := args[0]
+			password := ""
+			if len(args) == 2 {
+				password = args[1]
+			}
+
+			var value any // nil clears the column
+			if password != "" {
+				hashed, err := auth.HashPassword(password)
+				if err != nil {
+					return fmt.Errorf("hash password: %w", err)
+				}
+				value = hashed
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+
+			ctx := context.Background()
+			store, err := db.New(ctx, cfg.Core.DatabaseURL)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			tag, err := store.Pool.Exec(ctx,
+				`UPDATE folders SET password=$1, updated_at=now() WHERE id=$2 OR name=$2`,
+				value, ident)
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() == 0 {
+				return fmt.Errorf("no folder found with id or name %q", ident)
+			}
+
+			if value == nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "cleared password on folder %q\n", ident)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "set password on folder %q\n", ident)
+			}
+			return nil
+		},
+	}
 	return cmd
 }
 

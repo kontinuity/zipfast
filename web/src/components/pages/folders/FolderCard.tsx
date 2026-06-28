@@ -1,6 +1,6 @@
 import RelativeDate from '@/components/RelativeDate';
 import { Folder } from '@/lib/db/models/folder';
-import { ActionIcon, Anchor, Card, Group, Menu, Stack, Text } from '@mantine/core';
+import { ActionIcon, Anchor, Badge, Card, Group, Menu, Stack, Text, Tooltip } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
   IconCopy,
@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { copyFolderUrl, editFolderUploads, editFolderVisibility } from './actions';
 import DeleteFolderModal from './modals/DeleteFolderModal';
 import EditFolderNameModal from './modals/EditFolderNameModal';
+import EditFolderPasswordModal from './modals/EditFolderPasswordModal';
 import MoveFolderModal from './modals/MoveFolderModal';
 import ViewFilesModal from './modals/ViewFilesModal';
 import { withoutPropagation } from './views/FolderTableView';
@@ -35,6 +36,7 @@ export default function FolderCard({
 
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -45,6 +47,7 @@ export default function FolderCard({
     <>
       <ViewFilesModal opened={viewOpen} onClose={() => setViewOpen(false)} folder={folder} />
       <EditFolderNameModal folder={folder} opened={editOpen} onClose={() => setEditOpen(false)} />
+      <EditFolderPasswordModal folder={folder} opened={passwordOpen} onClose={() => setPasswordOpen(false)} />
       <MoveFolderModal folder={folder} opened={moveOpen} onClose={() => setMoveOpen(false)} />
       <DeleteFolderModal opened={deleteOpen} folder={folder} onClose={() => setDeleteOpen(false)} />
 
@@ -62,6 +65,13 @@ export default function FolderCard({
                   folder.name
                 )}
               </Text>
+              {folder.passwordProtected && (
+                <Tooltip label='Password protected'>
+                  <Badge color='yellow' variant='light' leftSection={<IconLock size='0.7rem' />}>
+                    Locked
+                  </Badge>
+                </Tooltip>
+              )}
             </Group>
 
             <Menu withinPortal position='bottom-end' shadow='sm'>
@@ -114,6 +124,12 @@ export default function FolderCard({
                   onClick={withoutPropagation(() => setEditOpen(true))}
                 >
                   Edit Name
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={folder.passwordProtected ? <IconLock size='1rem' /> : <IconLockOpen size='1rem' />}
+                  onClick={withoutPropagation(() => setPasswordOpen(true))}
+                >
+                  {folder.passwordProtected ? 'Manage password' : 'Set password'}
                 </Menu.Item>
                 <Menu.Item
                   leftSection={<IconCopy size='1rem' />}

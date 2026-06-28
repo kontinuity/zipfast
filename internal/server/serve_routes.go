@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"zipfast/internal/auth"
+	"zipfast/internal/media"
 	"zipfast/internal/models"
 	"zipfast/internal/upload"
 )
@@ -46,6 +47,11 @@ func (a *App) registerServeRoutes(r chi.Router) {
 	r.Post("/view/{id}", a.handleViewFilePassword)
 	r.Get("/view/url/{id}", a.handleViewURL)
 	r.Post("/view/url/{id}", a.handleViewURLPassword)
+
+	// Public folder gate (server-rendered password form for protected folders).
+	r.Get("/folder/{id}", a.handleFolderGate)
+	r.Post("/folder/{id}", a.handleFolderGatePassword)
+	r.Get("/folder/{id}/upload", a.handleFolderUploadGate)
 
 	// Small static endpoints.
 	r.Get("/robots.txt", a.serveRobotsTxt)
@@ -115,10 +121,74 @@ func (a *App) serveRawFile(w http.ResponseWriter, r *http.Request) {
 
 	file, err := a.Store.GetFileByName(r.Context(), name)
 	if err != nil || file == nil {
+		// The id may be a thumbnail object key rather than a file slug. Use the
+		// raw id (not the sanitized name): thumbnail keys begin with a dot, which
+		// SanitizeFilename trims. The key is validated against the thumbnails
+		// table before any datasource read, so there is no traversal risk.
+		if a.serveThumbnailIfMatch(w, r, id) {
+			return
+		}
 		a.serveNotFound(w)
 		return
 	}
 	a.serveRawByFile(w, r, file)
+}
+
+// serveThumbnailIfMatch serves a thumbnail object when name is a thumbnail key
+// (thumbnails.path). It applies the same gates as the parent file: a thumbnail
+// for a file in a password-protected folder redirects to the folder gate, and a
+// thumbnail for a password-protected file requires the file access token. It
+// returns true when it has handled (served or redirected) the request.
+func (a *App) serveThumbnailIfMatch(w http.ResponseWriter, r *http.Request, name string) bool {
+	fid, err := a.Store.GetThumbnailFileID(r.Context(), name)
+	if err != nil || fid == "" {
+		return false
+	}
+	parent, perr := a.Store.GetFileByID(r.Context(), fid)
+	if perr != nil || parent == nil {
+		return false
+	}
+
+	// Outer gate: folder protection.
+	if a.fileFolderBlocked(w, r, parent) {
+		return true
+	}
+	// Parent file password: the preview is protected too.
+	if parent.Password != nil && *parent.Password != "" {
+		token := r.URL.Query().Get("token")
+		if token == "" || !auth.VerifyAccessToken(token, "file", parent.ID, a.Cfg.Core.Secret) {
+			http.Redirect(w, r, "/view/"+parent.Name, http.StatusFound)
+			return true
+		}
+	}
+
+	a.streamThumbnail(w, r, name)
+	return true
+}
+
+// streamThumbnail writes a thumbnail object's bytes (no Range, no view counting).
+func (a *App) streamThumbnail(w http.ResponseWriter, _ *http.Request, thumbPath string) {
+	rc, err := a.DS.Get(thumbPath)
+	if err != nil || rc == nil {
+		a.serveNotFound(w)
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", thumbnailContentType(thumbPath))
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, rc)
+}
+
+// thumbnailContentType derives the image mime from a thumbnail object key's
+// extension (keys look like ".thumbnail.<id>.<format>").
+func thumbnailContentType(path string) string {
+	ext := path
+	if i := strings.LastIndex(path, "."); i >= 0 {
+		ext = path[i+1:]
+	}
+	return media.ThumbnailMime(ext)
 }
 
 // serveRawByFile streams the bytes for an already-resolved file. It enforces
@@ -131,6 +201,12 @@ func (a *App) serveRawByFile(w http.ResponseWriter, r *http.Request, file *model
 		_ = a.DS.Delete(file.Name)
 		_, _ = a.Store.Pool.Exec(r.Context(), `DELETE FROM files WHERE id=$1`, file.ID)
 		a.serveNotFound(w)
+		return
+	}
+
+	// Folder protection (outer gate): a file inside a password-protected folder
+	// requires a valid folder token, even via a direct /raw or /u URL.
+	if a.fileFolderBlocked(w, r, file) {
 		return
 	}
 

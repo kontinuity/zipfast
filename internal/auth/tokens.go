@@ -154,10 +154,19 @@ type accessTokenClaims struct {
 // base64url-encoded nonce||ciphertext (no timestamp prefix), matching how
 // Zipline stores access tokens.
 func CreateAccessToken(typ, id, secret string) (string, error) {
+	return CreateAccessTokenTTL(typ, id, secret, accessTokenTTL)
+}
+
+// CreateAccessTokenTTL is like CreateAccessToken but with a caller-chosen
+// lifetime. It is used for folder gate cookies, which need to outlast the 5
+// minute file/url default so a visitor can browse and paginate a protected
+// folder. VerifyAccessToken validates the embedded expiry, so no verifier change
+// is needed.
+func CreateAccessTokenTTL(typ, id, secret string, ttl time.Duration) (string, error) {
 	claims := accessTokenClaims{
 		Type:   typ,
 		ID:     id,
-		Expiry: nowMillis() + accessTokenTTL.Milliseconds(),
+		Expiry: nowMillis() + ttl.Milliseconds(),
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {

@@ -86,6 +86,7 @@ export const folderSchema = z.object({
   name: z.string(),
   public: z.boolean(),
   allowUploads: z.boolean(),
+  passwordProtected: z.boolean().optional(),
 
   parentId: z.string().nullable(),
   userId: z.string(),

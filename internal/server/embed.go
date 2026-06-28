@@ -188,6 +188,12 @@ func (a *App) handleViewFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Folder protection (outer gate): a file inside a password-protected folder
+	// sends the visitor to the folder gate first.
+	if a.fileFolderBlocked(w, r, file) {
+		return
+	}
+
 	token := r.URL.Query().Get("token")
 	protected := file.Password != nil && *file.Password != ""
 	unlocked := !protected || (token != "" && auth.VerifyAccessToken(token, "file", file.ID, a.Cfg.Core.Secret))

@@ -81,6 +81,66 @@ export async function editFolderUploads(folder: Folder, allowUploads: boolean) {
   mutateFolder();
 }
 
+export async function setFolderPassword(folder: Folder, password: string) {
+  const { data, error } = await fetchApi<Response['/api/user/folders/[id]']>(
+    `/api/user/folders/${folder.id}`,
+    'PATCH',
+    {
+      password,
+    },
+  );
+
+  if (error) {
+    notifications.show({
+      title: 'Failed to set folder password',
+      message: error.error,
+      color: 'red',
+      icon: <IconFolderOff size='1rem' />,
+    });
+  } else {
+    notifications.show({
+      title: 'Folder password set',
+      message: `${data?.name} is now password protected`,
+      color: 'green',
+      icon: <IconCheck size='1rem' />,
+    });
+  }
+
+  mutateFolder();
+
+  return { data, error };
+}
+
+export async function clearFolderPassword(folder: Folder) {
+  const { data, error } = await fetchApi<Response['/api/user/folders/[id]']>(
+    `/api/user/folders/${folder.id}`,
+    'PATCH',
+    {
+      password: '',
+    },
+  );
+
+  if (error) {
+    notifications.show({
+      title: 'Failed to remove folder password',
+      message: error.error,
+      color: 'red',
+      icon: <IconFolderOff size='1rem' />,
+    });
+  } else {
+    notifications.show({
+      title: 'Folder password removed',
+      message: `${data?.name} is no longer password protected`,
+      color: 'green',
+      icon: <IconCheck size='1rem' />,
+    });
+  }
+
+  mutateFolder();
+
+  return { data, error };
+}
+
 export async function mutateFolder(folderId?: string) {
   if (folderId) return mutate(`/api/user/folders/${folderId}`);
 

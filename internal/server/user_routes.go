@@ -524,12 +524,12 @@ func (a *App) userFilePassword(w http.ResponseWriter, r *http.Request) {
 
 // --- folders ---
 
-const userFolderColumns = `id, created_at, updated_at, name, public, allow_uploads, parent_id, user_id`
+const userFolderColumns = `id, created_at, updated_at, name, public, allow_uploads, parent_id, user_id, password`
 
 func userScanFolder(row pgx.Row) (*models.Folder, error) {
 	var f models.Folder
 	if err := row.Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt, &f.Name, &f.Public,
-		&f.AllowUploads, &f.ParentID, &f.UserID); err != nil {
+		&f.AllowUploads, &f.ParentID, &f.UserID, &f.Password); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, db.ErrNotFound
 		}
@@ -691,6 +691,9 @@ type userPatchFolderBody struct {
 	IsPublic     *bool   `json:"isPublic"`
 	AllowUploads *bool   `json:"allowUploads"`
 	ParentID     *string `json:"parentId"`
+	// Password sets (non-empty) or clears (empty string) the folder gate
+	// password. Omitting the field leaves it unchanged.
+	Password *string `json:"password"`
 }
 
 func (a *App) userPatchFolder(w http.ResponseWriter, r *http.Request) {
@@ -719,6 +722,18 @@ func (a *App) userPatchFolder(w http.ResponseWriter, r *http.Request) {
 			sets.add("parent_id", nil)
 		} else {
 			sets.add("parent_id", *body.ParentID)
+		}
+	}
+	if body.Password != nil {
+		if *body.Password == "" {
+			sets.add("password", nil)
+		} else {
+			hash, herr := auth.HashPassword(*body.Password)
+			if herr != nil {
+				a.Error(w, http.StatusInternalServerError, "failed to hash password")
+				return
+			}
+			sets.add("password", hash)
 		}
 	}
 	if sets.empty() {
@@ -1429,14 +1444,15 @@ func (a *App) folderResponse(r *http.Request, f *models.Folder, includeFiles boo
 	}
 
 	m := map[string]any{
-		"id":           f.ID,
-		"createdAt":    f.CreatedAt,
-		"updatedAt":    f.UpdatedAt,
-		"name":         f.Name,
-		"public":       f.Public,
-		"allowUploads": f.AllowUploads,
-		"parentId":     f.ParentID,
-		"userId":       f.UserID,
+		"id":                f.ID,
+		"createdAt":         f.CreatedAt,
+		"updatedAt":         f.UpdatedAt,
+		"name":              f.Name,
+		"public":            f.Public,
+		"allowUploads":      f.AllowUploads,
+		"parentId":          f.ParentID,
+		"userId":            f.UserID,
+		"passwordProtected": f.Password != nil && *f.Password != "",
 		"_count": map[string]any{
 			"children": childCount,
 			"files":    fileCount,

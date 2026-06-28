@@ -185,6 +185,7 @@ type Folder struct {
 	AllowUploads bool      `json:"allowUploads"`
 	ParentID     *string   `json:"parentId,omitempty"`
 	UserID       string    `json:"-"`
+	Password     *string   `json:"-"` // redacted; exposed only as passwordProtected
 	Files        []File    `json:"files,omitempty"`
 }
 
