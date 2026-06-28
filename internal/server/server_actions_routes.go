@@ -1,6 +1,7 @@
 package server
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -52,6 +54,10 @@ func (a *App) registerServerActionRoutes(r chi.Router) {
 
 	// GET /api/server/folder/{id} (PUBLIC) -> { folder, page, total, pages }.
 	r.Get("/api/server/folder/{id}", a.sactFolder)
+
+	// GET /api/server/folder/{id}/zip (PUBLIC) -> streamed zip of the folder's
+	// files. Gated by the folder token when the folder is password-protected.
+	r.Get("/api/server/folder/{id}/zip", a.sactFolderZip)
 }
 
 // --- status ---
@@ -909,15 +915,14 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 		public         bool
 		allowUploads   bool
 		parentID       *string
-		userID         string
 		password       *string
 		createdAt      time.Time
 		updatedAt      time.Time
 	)
 	err := a.Store.Pool.QueryRow(ctx,
-		`SELECT id, created_at, updated_at, name, public, allow_uploads, parent_id, user_id, password
+		`SELECT id, created_at, updated_at, name, public, allow_uploads, parent_id, password
 		   FROM folders WHERE id = $1 OR name = $1 LIMIT 1`, id).
-		Scan(&folderID, &createdAt, &updatedAt, &name, &public, &allowUploads, &parentID, &userID, &password)
+		Scan(&folderID, &createdAt, &updatedAt, &name, &public, &allowUploads, &parentID, &password)
 	if errors.Is(err, pgx.ErrNoRows) {
 		a.Error(w, http.StatusNotFound, "folder not found")
 		return
@@ -1013,6 +1018,8 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 
 	// Build the cleaned folder: _count, public children, and a public parent chain.
 	childCount, fileCount := a.sactFolderCounts(ctx, folderID)
+	// Note: userID is intentionally NOT included — this is a public endpoint and
+	// must not reveal the owner's identity.
 	folder := map[string]any{
 		"id":                folderID,
 		"createdAt":         createdAt,
@@ -1021,7 +1028,6 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 		"public":            public,
 		"allowUploads":      allowUploads,
 		"parentId":          parentID,
-		"userId":            userID,
 		"passwordProtected": protected,
 		"_count": map[string]any{
 			"children": childCount,
@@ -1035,10 +1041,113 @@ func (a *App) sactFolder(w http.ResponseWriter, r *http.Request) {
 
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"folder": folder,
-		"page":   a.fileResponses(r, files),
+		"page":   a.sactPublicFiles(files),
 		"total":  total,
 		"pages":  pages,
 	})
+}
+
+// sactPublicFiles maps files to the trimmed, privacy-safe shape used by the
+// public folder listing. It deliberately omits owner-only / sensitive fields
+// (db id, views, maxViews, deletesAt, favorite, anonymous, tags, folderId) and
+// keeps only what the public viewer needs to display and download a file.
+func (a *App) sactPublicFiles(files []models.File) []map[string]any {
+	out := make([]map[string]any, 0, len(files))
+	for i := range files {
+		out = append(out, a.sactPublicFile(&files[i]))
+	}
+	return out
+}
+
+func (a *App) sactPublicFile(f *models.File) map[string]any {
+	var thumb any
+	if f.Thumbnail != nil && f.Thumbnail.Path != "" {
+		thumb = map[string]any{"path": f.Thumbnail.Path}
+	}
+
+	display := f.Name
+	if f.OriginalName != nil && *f.OriginalName != "" {
+		display = *f.OriginalName
+	}
+
+	return map[string]any{
+		"name":         f.Name,
+		"originalName": f.OriginalName,
+		"displayName":  display,
+		"size":         f.Size,
+		"type":         f.Type,
+		"createdAt":    f.CreatedAt,
+		"updatedAt":    f.UpdatedAt,
+		"thumbnail":    thumb,
+		"password":     f.Password != nil && *f.Password != "",
+		"url":          a.fileURL(f.Name),
+	}
+}
+
+// sactFolderZip streams a zip archive of a public folder's files
+// (GET /api/server/folder/{id}/zip). Only public folders are downloadable, and a
+// password-protected folder requires a valid folder token (the gate cookie or
+// ?token=), matching the listing's protection.
+func (a *App) sactFolderZip(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	var (
+		folderID, name string
+		public         bool
+		allowUploads   bool
+		password       *string
+	)
+	err := a.Store.Pool.QueryRow(ctx,
+		`SELECT id, name, public, allow_uploads, password
+		   FROM folders WHERE id = $1 OR name = $1 LIMIT 1`, id).
+		Scan(&folderID, &name, &public, &allowUploads, &password)
+	if errors.Is(err, pgx.ErrNoRows) {
+		a.Error(w, http.StatusNotFound, "folder not found")
+		return
+	}
+	if err != nil {
+		a.Error(w, http.StatusInternalServerError, "failed to load folder")
+		return
+	}
+	if !public {
+		a.Error(w, http.StatusNotFound, "folder not found")
+		return
+	}
+	if password != nil && *password != "" && !a.folderTokenValid(r, folderID) {
+		a.Error(w, http.StatusForbidden, "folder is password protected")
+		return
+	}
+
+	rows, err := a.Store.Pool.Query(ctx,
+		`SELECT name, original_name FROM files WHERE folder_id = $1 ORDER BY created_at ASC`, folderID)
+	if err != nil {
+		a.Error(w, http.StatusInternalServerError, "failed to list files")
+		return
+	}
+	files := make([]expFileRow, 0)
+	for rows.Next() {
+		var f expFileRow
+		if scanErr := rows.Scan(&f.Name, &f.OriginalName); scanErr == nil {
+			files = append(files, f)
+		}
+	}
+	rows.Close()
+
+	zipName := name
+	if strings.TrimSpace(zipName) == "" {
+		zipName = "folder"
+	}
+	zipName += ".zip"
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+expSanitizeFilename(zipName)+"\"")
+
+	zw := zip.NewWriter(w)
+	a.expWriteFilesToZip(zw, files)
+	if err := zw.Close(); err != nil {
+		a.Log.Warn("public folder zip: finalize failed", "folder", folderID, "err", err)
+	}
 }
 
 func (a *App) sactFolderCounts(ctx context.Context, folderID string) (childCount, fileCount int) {

@@ -9,7 +9,7 @@ import { ApiAuthWebauthnOptionsResponse, ApiAuthWebauthnResponse } from '@/serve
 import { ApiHealthcheckResponse } from '@/server/routes/api/healthcheck';
 import { ApiServerClearTempResponse } from '@/server/routes/api/server/clear_temp';
 import { ApiServerClearZerosResponse } from '@/server/routes/api/server/clear_zeros';
-import { ApiServerFolderResponse } from '@/server/routes/api/server/folder';
+import { Folder, PublicFolderFile } from '@/lib/db/models/folder';
 import { ApiServerImportV3 } from '@/server/routes/api/server/import/v3';
 import { ApiServerImportV4 } from '@/server/routes/api/server/import/v4';
 import { ApiServerPublicResponse } from '@/server/routes/api/server/public';
@@ -45,6 +45,19 @@ import { ApiUserUrlsIdResponse } from '@/server/routes/api/user/urls/[id]';
 import { ApiUsersResponse } from '@/server/routes/api/users';
 import { ApiUsersIdResponse } from '@/server/routes/api/users/[id]';
 import { ApiVersionResponse } from '@/server/routes/api/version';
+
+/**
+ * Public folder endpoint response. `page` is the TRIMMED public file shape
+ * (no id/views/tags/etc.) — see {@link PublicFolderFile}. Kept separate from
+ * the server's internal `ApiServerFolderResponse` so the shared dashboard
+ * `File` type is never weakened for the public view.
+ */
+export type ApiServerFolderPublicResponse = {
+  folder: Partial<Folder>;
+  page: PublicFolderFile[];
+  total: number;
+  pages: number;
+};
 
 export type Response = {
   '/api/auth/invites/[id]': ApiAuthInvitesIdResponse;
@@ -85,7 +98,7 @@ export type Response = {
   '/api/server/settings': ApiServerSettingsResponse;
   '/api/server/settings/web': ApiServerSettingsWebResponse;
   '/api/server/public': ApiServerPublicResponse;
-  '/api/server/folder/[id]': ApiServerFolderResponse;
+  '/api/server/folder/[id]': ApiServerFolderPublicResponse;
   '/api/server/themes': ApiServerThemesResponse;
   '/api/server/thumbnails': ApiServerThumbnailsResponse;
   '/api/server/import/v3': ApiServerImportV3;

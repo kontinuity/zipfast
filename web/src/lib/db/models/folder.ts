@@ -89,7 +89,7 @@ export const folderSchema = z.object({
   passwordProtected: z.boolean().optional(),
 
   parentId: z.string().nullable(),
-  userId: z.string(),
+  userId: z.string().optional(),
 
   files: z.array(fileSchema).optional(),
   parent: z.any().nullable().optional(),
@@ -126,3 +126,31 @@ export const folderParentPublicSchema = z.object({
 
 export type FolderParent = z.infer<typeof folderParentSchema>;
 export type FolderParentPublic = z.infer<typeof folderParentPublicSchema>;
+
+/**
+ * Trimmed file shape returned by the PUBLIC folder endpoint
+ * (`GET /api/server/folder/[id]`). Public file objects intentionally omit
+ * private fields (`id`, `views`, `maxViews`, `favorite`, `tags`, `userId`,
+ * `deletesAt`); use `name` as the stable key and for building URLs.
+ *
+ * This is deliberately separate from the dashboard `File` type so the shared
+ * type is not weakened for authenticated views.
+ */
+export const publicFolderFileSchema = z.object({
+  name: z.string(),
+  originalName: z.string().nullable(),
+  displayName: z.string().nullable().optional(),
+  size: z.number(),
+  type: z.string(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  thumbnail: z
+    .object({
+      path: z.string(),
+    })
+    .nullable(),
+  password: z.boolean(),
+  url: z.string(),
+});
+
+export type PublicFolderFile = z.infer<typeof publicFolderFileSchema>;

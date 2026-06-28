@@ -1,0 +1,50 @@
+.row {
+  transition:
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.row:hover {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sortable:hover {
+  color: var(--mantine-color-bright);
+}
+
+.nameButton {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  width: 100%;
+  text-align: left;
+  min-width: 0;
+}
+
+.card {
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mantine-shadow-md);
+  border-color: var(--mantine-color-default-border);
+}
+
+.thumb {
+  cursor: pointer;
+  background-color: var(--mantine-color-default-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
