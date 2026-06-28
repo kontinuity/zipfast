@@ -5,7 +5,7 @@ const f = async () => {
   if (!res.ok) return null;
 
   const r = await res.text();
-  return r;
+  return r || null;
 };
 
 export default function useAvatar() {

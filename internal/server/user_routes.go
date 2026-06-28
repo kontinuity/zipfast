@@ -43,6 +43,9 @@ func (a *App) registerUserRoutes(r chi.Router) {
 		r.Get("/api/user/token", a.userGetToken)
 		r.Patch("/api/user/token", a.userPatchToken)
 
+		// Avatar (base64 data URL).
+		r.Get("/api/user/avatar", a.userGetAvatar)
+
 		// Files.
 		r.Get("/api/user/files", a.userListFiles)
 		r.Get("/api/user/files/{id}", a.userGetFile)
@@ -139,6 +142,30 @@ func (a *App) userPatchSelf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": updated})
+}
+
+// userGetAvatar mirrors GET /api/user/avatar: the current user's avatar as a
+// base64 data URL string. Unlike the original (which 404s when unset), we return
+// 204 No Content so a user without an avatar doesn't generate a noisy 404 on
+// every page load; the client renders its placeholder either way.
+func (a *App) userGetAvatar(w http.ResponseWriter, r *http.Request) {
+	u := UserFromContext(r.Context())
+
+	var avatar *string
+	if err := a.Store.Pool.QueryRow(r.Context(),
+		`SELECT avatar FROM users WHERE id=$1`, u.ID).Scan(&avatar); err != nil {
+		a.Error(w, http.StatusInternalServerError, "failed to load avatar")
+		return
+	}
+	if avatar == nil || *avatar == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(*avatar))
 }
 
 // --- token ---
