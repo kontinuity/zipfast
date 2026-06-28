@@ -40,7 +40,7 @@
     "@simplewebauthn/server": "^13.3.0",
     "@smithy/node-http-handler": "^4.7.2",
     "@tabler/icons-react": "^3.44.0",
-    "archiver": "7.0.1",
+    "archiver": "8.0.0",
     "argon2": "^0.44.0",
     "asciinema-player": "^3.15.1",
     "bytes": "^3.1.2",
@@ -81,7 +81,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@types/archiver": "^7.0.0",
+    "@types/archiver": "^8.0.0",
     "@types/bytes": "^3.1.5",
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/he": "^1.2.3",
