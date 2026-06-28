@@ -337,8 +337,7 @@ func (a *App) handleAdminPatchUser(w http.ResponseWriter, r *http.Request) {
 			filesQuota = models.QuotaByBytes
 			maxFiles = nil
 			maxBytes = nil
-		default: // BY_BYTES (and any unspecified)
-			filesQuota = models.QuotaByBytes
+		default: // BY_BYTES (and any unspecified): keep the initial QuotaByBytes
 			maxBytes = body.Quota.MaxBytes
 			maxFiles = nil
 		}

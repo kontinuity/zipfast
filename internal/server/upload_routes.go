@@ -326,7 +326,7 @@ func (a *App) uploadStreamToTemp(part io.Reader, maxFileSize int64) (string, int
 	}
 	tmpPath := tmp.Name()
 
-	var reader io.Reader = part
+	var reader = part
 	if maxFileSize > 0 {
 		// Allow one extra byte so we can detect "too large".
 		reader = io.LimitReader(part, maxFileSize+1)

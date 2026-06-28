@@ -613,15 +613,6 @@ func mfaClientDevice(ua string) (client, device string) {
 
 // --- WebAuthn: passkey management ---
 
-// mfaPasskeyInfo is the public shape of a stored passkey (the reg blob is never
-// exposed).
-type mfaPasskeyInfo struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	CreatedAt time.Time  `json:"createdAt"`
-	LastUsed  *time.Time `json:"lastUsed,omitempty"`
-}
-
 // mfaPasskeyList returns the authenticated user's registered passkeys.
 func (a *App) mfaPasskeyList(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())

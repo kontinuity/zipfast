@@ -77,7 +77,7 @@ func (a *App) handleFolderGate(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	f, err := a.lookupGateFolder(r.Context(), id)
-	if err != nil || f == nil || !(f.Public || f.AllowUploads) || !f.protected() || a.folderTokenValid(r, f.ID) {
+	if err != nil || f == nil || (!f.Public && !f.AllowUploads) || !f.protected() || a.folderTokenValid(r, f.ID) {
 		// Not found / not viewable / not protected / already unlocked: let the SPA
 		// render (it will show the folder or its own not-found state).
 		a.serveSPA(w, r)

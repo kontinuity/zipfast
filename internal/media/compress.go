@@ -19,7 +19,6 @@ import (
 	"image/png"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	// Register decoders so image.Decode can sniff JPEG, PNG, and GIF inputs.
@@ -189,21 +188,4 @@ func clampQuality(q int) int {
 		return defaultJPEGQuality
 	}
 	return q
-}
-
-// extFor returns the canonical extension for an output type. Exposed for callers
-// that need to derive a filename before invoking Compress.
-func extFor(typ string) string {
-	switch normalizeType(typ) {
-	case "jpg", "jpeg":
-		return "jpg"
-	case "png":
-		return "png"
-	case "webp":
-		return "webp"
-	case "jxl":
-		return "jxl"
-	default:
-		return strings.TrimPrefix(filepath.Ext(typ), ".")
-	}
 }

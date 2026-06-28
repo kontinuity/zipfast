@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  go: "1.25"
+
+# Default linter set: errcheck, govet, ineffassign, staticcheck, unused.
+linters:
+  default: standard
+  exclusions:
+    # Don't lint vendored/generated trees if any appear later.
+    generated: lax
+    rules:
+      # Best-effort cleanup — deferred Close() and temp-file removal — is
+      # intentional throughout the file/stream handlers; not worth wrapping.
+      - linters: [errcheck]
+        source: '\.Close\(\)'
+      - linters: [errcheck]
+        source: 'os\.Remove\('
+      # Deferred transaction rollback: the commit path owns the real error, and
+      # a rollback after a successful commit is an expected no-op.
+      - linters: [errcheck]
+        source: '\.Rollback\('
+      # Writes to stdout / tabwriter in the CLI — errors here are not actionable.
+      - linters: [errcheck]
+        source: 'fmt\.Fprint'

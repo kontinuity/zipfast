@@ -53,19 +53,25 @@ jobs:
         run: go test ./...
 
   golangci:
-    name: golangci-lint (advisory)
+    name: golangci-lint
     runs-on: ubuntu-24.04
-    # Advisory only until a tuned .golangci.yml lands — never blocks a merge.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      # Install the pinned binary directly rather than golangci/golangci-lint-action,
+      # which still ships a Node 20 runtime (deprecation warning + punycode notice).
+      # A plain run step uses no Node action. v2.12.2 is built with Go 1.26, so it
+      # can lint our Go 1.25 target (the v1.x the action pulled could not).
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.12.2/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
 
   web:
     name: Web — SPA build
@@ -76,6 +82,8 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
+          # The packageManager field lives in web/package.json (repo root is Go).
+          package_json_file: web/package.json
 
       - uses: actions/setup-node@v4
         with:

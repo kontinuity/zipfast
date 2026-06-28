@@ -24,11 +24,12 @@ No tag or manual step required. Use `:edge` for "always latest from main".
 (Settings → Branches → Add rule):
 
 - Require a pull request before merging (1 approval; `CODEOWNERS` routes review to the owner)
-- Require status checks to pass: **`Go — fmt / vet / build / test`**, **`Web — SPA build`**, **`Docker — image builds (no push)`**
+- Require status checks to pass: **`Go — fmt / vet / build / test`**, **`golangci-lint`**, **`Web — SPA build`**, **`Docker — image builds (no push)`**
 - Require branches to be up to date before merging
 
-`golangci-lint` runs as an **advisory** (non-blocking) check until a tuned
-`.golangci.yml` is added.
+`golangci-lint` (pinned `v2.12.2`) runs against [`.golangci.yml`](../.golangci.yml) —
+the standard linter set (errcheck, govet, ineffassign, staticcheck, unused), with
+best-effort deferred `Close()` / `os.Remove` calls excluded.
 
 ## 3. Cutting a versioned release
 

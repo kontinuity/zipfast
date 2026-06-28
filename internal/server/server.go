@@ -77,7 +77,9 @@ func (a *App) Router() http.Handler {
 
 	r.Use(middleware.RequestID)
 	if a.Cfg.Core.TrustProxy {
-		r.Use(middleware.RealIP)
+		// Only trust proxy headers when the operator opts in via CORE_TRUST_PROXY,
+		// so RealIP's X-Forwarded-For spoofing caveat does not apply here.
+		r.Use(middleware.RealIP) //nolint:staticcheck // intentional, gated by TrustProxy
 	}
 	r.Use(middleware.Recoverer)
 	r.Use(a.requestLogger)

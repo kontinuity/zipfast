@@ -120,7 +120,7 @@ func (a *App) RateLimit(next http.Handler) http.Handler {
 
 		// Resolve identity (and admin status) without a DB hit when possible: the
 		// limiter key prefers a user id, falling back to the client IP.
-		identity := ip
+		var identity string
 		if user := a.authenticate(r); user != nil {
 			if len(allow) > 0 && allow[user.ID] {
 				next.ServeHTTP(w, r)
@@ -185,14 +185,6 @@ func (s *rlStore) maybePruneLocked(now time.Time) {
 	if len(s.entries) > rlMaxEntries {
 		s.entries = make(map[string]*rlEntry)
 	}
-}
-
-// reset clears all limiter state. Exposed for tests / administrative resets.
-func (s *rlStore) reset() {
-	s.mu.Lock()
-	s.entries = make(map[string]*rlEntry)
-	s.lastPrune = time.Now()
-	s.mu.Unlock()
 }
 
 // rlClientIP extracts the client IP. middleware.RealIP (enabled when TrustProxy
