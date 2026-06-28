@@ -6,7 +6,7 @@
 # in which case client serving is turned off and the API runs standalone.
 
 # --- 1) web client build (Vite SPA -> web/dist) ---
-FROM node:22-alpine AS webbuild
+FROM node:26-alpine AS webbuild
 WORKDIR /web
 RUN corepack enable
 # Dependencies first for layer caching.
