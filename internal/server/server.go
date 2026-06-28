@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -28,9 +29,42 @@ type App struct {
 	Version  string
 	Sessions *auth.SessionManager
 
+	// Tampered lists the setting keys overridden by environment variables (locked
+	// in the admin UI). cfgMu guards live swaps of Cfg/Tampered on settings change.
+	Tampered []string
+	cfgMu    sync.Mutex
+
 	// SPAIndex is the contents of the SPA index.html used by the embed/meta endpoint
 	// (may be empty if the SPA is served entirely from a CDN).
 	SPAIndex []byte
+}
+
+// ReloadSettings rebuilds the effective config from the DB-persisted settings
+// blob (env still wins) and swaps it in live, so admin Settings changes take
+// effect without a restart — matching Zipline. Best-effort: on error the current
+// config is kept.
+func (a *App) ReloadSettings(ctx context.Context) {
+	data, _, err := a.Store.LoadSettings(ctx)
+	if err != nil {
+		a.Log.Warn("reload settings: load failed", "err", err)
+		return
+	}
+	var blob map[string]any
+	if len(data) > 0 {
+		if uerr := json.Unmarshal(data, &blob); uerr != nil {
+			a.Log.Warn("reload settings: decode failed", "err", uerr)
+			return
+		}
+	}
+	eff, berr := config.BuildEffective(blob)
+	if berr != nil {
+		a.Log.Warn("reload settings: build effective failed", "err", berr)
+		return
+	}
+	a.cfgMu.Lock()
+	a.Cfg = eff
+	a.Tampered = config.EnvTamperedKeys()
+	a.cfgMu.Unlock()
 }
 
 // Router builds the root HTTP handler. Feature route groups are registered by

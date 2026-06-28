@@ -233,10 +233,19 @@ func Defaults() *Config {
 	}
 }
 
-// Load builds a Config from defaults overlaid with environment variables.
-// DB-persisted settings can later be overlaid via ApplySettings before env is re-applied.
+// Load builds a Config from defaults overlaid with environment variables. Used
+// for the bootstrap pass (to obtain the database URL); the effective config is
+// rebuilt with BuildEffective once DB-persisted settings are available.
 func Load() (*Config, error) {
+	return BuildEffective(nil)
+}
+
+// BuildEffective constructs the effective config exactly like Zipline's read():
+// defaults, overlaid with the DB-persisted settings blob, then overlaid with
+// environment variables (env wins). Pass nil for the bootstrap (env-only) pass.
+func BuildEffective(blob map[string]any) (*Config, error) {
 	c := Defaults()
+	c.ApplySettings(blob)
 	c.applyEnv()
 
 	if c.Core.Secret == "" {
@@ -351,6 +360,284 @@ func buildDBURLFromParts() (string, error) {
 		return "", fmt.Errorf("either DATABASE_URL or all of DATABASE_USERNAME/PASSWORD/HOST/PORT/NAME must be set")
 	}
 	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s", u, p, h, port, name), nil
+}
+
+// ApplySettings overlays the DB-persisted settings blob (the flat key/value
+// object the admin Settings UI saves) onto c. It is the inverse of the server's
+// flat-settings projection. Only keys present in the blob are applied; env vars
+// (applied afterwards in applyEnv) still win. Keys with no Config field, and
+// values of the wrong type, are ignored.
+func (c *Config) ApplySettings(blob map[string]any) {
+	if len(blob) == 0 {
+		return
+	}
+
+	// core
+	c.Core.ReturnHTTPSURLs = sbBool(blob, "coreReturnHttpsUrls", c.Core.ReturnHTTPSURLs)
+	c.Core.DefaultDomain = sbStr(blob, "coreDefaultDomain", c.Core.DefaultDomain)
+	c.Core.TempDirectory = sbStr(blob, "coreTempDirectory", c.Core.TempDirectory)
+	c.Core.TrustProxy = sbBool(blob, "coreTrustProxy", c.Core.TrustProxy)
+
+	// chunks
+	c.Chunks.Enabled = sbBool(blob, "chunksEnabled", c.Chunks.Enabled)
+	c.Chunks.Max = sbStr(blob, "chunksMax", c.Chunks.Max)
+	c.Chunks.Size = sbStr(blob, "chunksSize", c.Chunks.Size)
+
+	// tasks (ms-style duration strings, e.g. "30m", "1d")
+	c.Tasks.DeleteInterval = sbDur(blob, "tasksDeleteInterval", c.Tasks.DeleteInterval)
+	c.Tasks.ClearInvitesInterval = sbDur(blob, "tasksClearInvitesInterval", c.Tasks.ClearInvitesInterval)
+	c.Tasks.MaxViewsInterval = sbDur(blob, "tasksMaxViewsInterval", c.Tasks.MaxViewsInterval)
+	c.Tasks.ThumbnailsInterval = sbDur(blob, "tasksThumbnailsInterval", c.Tasks.ThumbnailsInterval)
+	c.Tasks.MetricsInterval = sbDur(blob, "tasksMetricsInterval", c.Tasks.MetricsInterval)
+	c.Tasks.CleanThumbnailsInterval = sbDur(blob, "tasksCleanThumbnailsInterval", c.Tasks.CleanThumbnailsInterval)
+
+	// files
+	c.Files.Route = sbStr(blob, "filesRoute", c.Files.Route)
+	c.Files.Length = sbInt(blob, "filesLength", c.Files.Length)
+	c.Files.DefaultFormat = sbStr(blob, "filesDefaultFormat", c.Files.DefaultFormat)
+	c.Files.DisabledExtensions = sbStrSlice(blob, "filesDisabledExtensions", c.Files.DisabledExtensions)
+	c.Files.MaxFileSize = sbStr(blob, "filesMaxFileSize", c.Files.MaxFileSize)
+	c.Files.DefaultExpiration = sbStr(blob, "filesDefaultExpiration", c.Files.DefaultExpiration)
+	c.Files.MaxExpiration = sbStr(blob, "filesMaxExpiration", c.Files.MaxExpiration)
+	c.Files.AssumeMimetypes = sbBool(blob, "filesAssumeMimetypes", c.Files.AssumeMimetypes)
+	c.Files.DefaultDateFormat = sbStr(blob, "filesDefaultDateFormat", c.Files.DefaultDateFormat)
+	c.Files.RemoveGPSMetadata = sbBool(blob, "filesRemoveGpsMetadata", c.Files.RemoveGPSMetadata)
+	c.Files.RandomWordsNumAdjectives = sbInt(blob, "filesRandomWordsNumAdjectives", c.Files.RandomWordsNumAdjectives)
+	c.Files.RandomWordsSeparator = sbStr(blob, "filesRandomWordsSeparator", c.Files.RandomWordsSeparator)
+	c.Files.DefaultCompressionFormat = sbStr(blob, "filesDefaultCompressionFormat", c.Files.DefaultCompressionFormat)
+	c.Files.MaxFilesPerUpload = sbInt(blob, "filesMaxFilesPerUpload", c.Files.MaxFilesPerUpload)
+	c.Files.ExtensionlessUrls = sbBool(blob, "filesExtensionlessUrls", c.Files.ExtensionlessUrls)
+
+	// urls
+	c.Urls.Route = sbStr(blob, "urlsRoute", c.Urls.Route)
+	c.Urls.Length = sbInt(blob, "urlsLength", c.Urls.Length)
+
+	// features
+	c.Features.ImageCompression = sbBool(blob, "featuresImageCompression", c.Features.ImageCompression)
+	c.Features.RobotsTxt = sbBool(blob, "featuresRobotsTxt", c.Features.RobotsTxt)
+	c.Features.Healthcheck = sbBool(blob, "featuresHealthcheck", c.Features.Healthcheck)
+	c.Features.UserRegistration = sbBool(blob, "featuresUserRegistration", c.Features.UserRegistration)
+	c.Features.OAuthRegistration = sbBool(blob, "featuresOauthRegistration", c.Features.OAuthRegistration)
+	c.Features.DeleteOnMaxViews = sbBool(blob, "featuresDeleteOnMaxViews", c.Features.DeleteOnMaxViews)
+	c.Features.ThumbnailsEnabled = sbBool(blob, "featuresThumbnailsEnabled", c.Features.ThumbnailsEnabled)
+	c.Features.ThumbnailsThreads = sbInt(blob, "featuresThumbnailsNumberThreads", c.Features.ThumbnailsThreads)
+	c.Features.ThumbnailsFormat = sbStr(blob, "featuresThumbnailsFormat", c.Features.ThumbnailsFormat)
+	c.Features.ThumbnailsInstant = sbBool(blob, "featuresThumbnailsInstantaneous", c.Features.ThumbnailsInstant)
+	c.Features.MetricsEnabled = sbBool(blob, "featuresMetricsEnabled", c.Features.MetricsEnabled)
+	c.Features.MetricsAdminOnly = sbBool(blob, "featuresMetricsAdminOnly", c.Features.MetricsAdminOnly)
+	c.Features.MetricsShowUserSpec = sbBool(blob, "featuresMetricsShowUserSpecific", c.Features.MetricsShowUserSpec)
+	c.Features.VersionChecking = sbBool(blob, "featuresVersionChecking", c.Features.VersionChecking)
+
+	// invites
+	c.Invites.Enabled = sbBool(blob, "invitesEnabled", c.Invites.Enabled)
+	c.Invites.Length = sbInt(blob, "invitesLength", c.Invites.Length)
+
+	// website
+	c.Website.Title = sbStr(blob, "websiteTitle", c.Website.Title)
+	c.Website.ThemeDefault = sbStr(blob, "websiteThemeDefault", c.Website.ThemeDefault)
+	c.Website.ThemeDark = sbStr(blob, "websiteThemeDark", c.Website.ThemeDark)
+	c.Website.ThemeLight = sbStr(blob, "websiteThemeLight", c.Website.ThemeLight)
+
+	// oauth
+	c.OAuth.BypassLocalLogin = sbBool(blob, "oauthBypassLocalLogin", c.OAuth.BypassLocalLogin)
+	c.OAuth.LoginOnly = sbBool(blob, "oauthLoginOnly", c.OAuth.LoginOnly)
+	c.OAuth.Discord.ClientID = sbStr(blob, "oauthDiscordClientId", c.OAuth.Discord.ClientID)
+	c.OAuth.Discord.ClientSecret = sbStr(blob, "oauthDiscordClientSecret", c.OAuth.Discord.ClientSecret)
+	c.OAuth.Discord.RedirectURI = sbStr(blob, "oauthDiscordRedirectUri", c.OAuth.Discord.RedirectURI)
+	c.OAuth.Discord.AllowedIDs = sbStrSlice(blob, "oauthDiscordAllowedIds", c.OAuth.Discord.AllowedIDs)
+	c.OAuth.Discord.DeniedIDs = sbStrSlice(blob, "oauthDiscordDeniedIds", c.OAuth.Discord.DeniedIDs)
+	c.OAuth.Google.ClientID = sbStr(blob, "oauthGoogleClientId", c.OAuth.Google.ClientID)
+	c.OAuth.Google.ClientSecret = sbStr(blob, "oauthGoogleClientSecret", c.OAuth.Google.ClientSecret)
+	c.OAuth.Google.RedirectURI = sbStr(blob, "oauthGoogleRedirectUri", c.OAuth.Google.RedirectURI)
+	c.OAuth.Github.ClientID = sbStr(blob, "oauthGithubClientId", c.OAuth.Github.ClientID)
+	c.OAuth.Github.ClientSecret = sbStr(blob, "oauthGithubClientSecret", c.OAuth.Github.ClientSecret)
+	c.OAuth.Github.RedirectURI = sbStr(blob, "oauthGithubRedirectUri", c.OAuth.Github.RedirectURI)
+	c.OAuth.OIDC.ClientID = sbStr(blob, "oauthOidcClientId", c.OAuth.OIDC.ClientID)
+	c.OAuth.OIDC.ClientSecret = sbStr(blob, "oauthOidcClientSecret", c.OAuth.OIDC.ClientSecret)
+	c.OAuth.OIDC.AuthorizeURL = sbStr(blob, "oauthOidcAuthorizeUrl", c.OAuth.OIDC.AuthorizeURL)
+	c.OAuth.OIDC.TokenURL = sbStr(blob, "oauthOidcTokenUrl", c.OAuth.OIDC.TokenURL)
+	c.OAuth.OIDC.UserinfoURL = sbStr(blob, "oauthOidcUserinfoUrl", c.OAuth.OIDC.UserinfoURL)
+	c.OAuth.OIDC.RedirectURI = sbStr(blob, "oauthOidcRedirectUri", c.OAuth.OIDC.RedirectURI)
+
+	// mfa
+	c.MFA.TotpEnabled = sbBool(blob, "mfaTotpEnabled", c.MFA.TotpEnabled)
+	c.MFA.TotpIssuer = sbStr(blob, "mfaTotpIssuer", c.MFA.TotpIssuer)
+	c.MFA.PasskeysEnabled = sbBool(blob, "mfaPasskeysEnabled", c.MFA.PasskeysEnabled)
+	c.MFA.PasskeysRPID = sbStr(blob, "mfaPasskeysRpID", c.MFA.PasskeysRPID)
+	c.MFA.PasskeysOrigin = sbStr(blob, "mfaPasskeysOrigin", c.MFA.PasskeysOrigin)
+
+	// ratelimit
+	c.Ratelimit.Enabled = sbBool(blob, "ratelimitEnabled", c.Ratelimit.Enabled)
+	c.Ratelimit.Max = sbInt(blob, "ratelimitMax", c.Ratelimit.Max)
+	c.Ratelimit.AdminBypass = sbBool(blob, "ratelimitAdminBypass", c.Ratelimit.AdminBypass)
+	c.Ratelimit.AllowList = sbStrSlice(blob, "ratelimitAllowList", c.Ratelimit.AllowList)
+
+	// webhooks
+	c.Webhooks.HTTPOnUpload = sbStr(blob, "httpWebhookOnUpload", c.Webhooks.HTTPOnUpload)
+	c.Webhooks.HTTPOnShorten = sbStr(blob, "httpWebhookOnShorten", c.Webhooks.HTTPOnShorten)
+	c.Webhooks.DiscordOnUploadWebhookURL = sbStr(blob, "discordOnUploadWebhookUrl", c.Webhooks.DiscordOnUploadWebhookURL)
+	c.Webhooks.DiscordOnShortenWebhookURL = sbStr(blob, "discordOnShortenWebhookUrl", c.Webhooks.DiscordOnShortenWebhookURL)
+
+	// pwa
+	c.PWA.Enabled = sbBool(blob, "pwaEnabled", c.PWA.Enabled)
+	c.PWA.Title = sbStr(blob, "pwaTitle", c.PWA.Title)
+	c.PWA.ShortName = sbStr(blob, "pwaShortName", c.PWA.ShortName)
+	c.PWA.Description = sbStr(blob, "pwaDescription", c.PWA.Description)
+	c.PWA.ThemeColor = sbStr(blob, "pwaThemeColor", c.PWA.ThemeColor)
+	c.PWA.BackgroundColor = sbStr(blob, "pwaBackgroundColor", c.PWA.BackgroundColor)
+
+	// domains
+	c.Domains = sbStrSlice(blob, "domains", c.Domains)
+}
+
+// settingEnvVars maps each editable setting's flat key to the environment
+// variable that overrides it (only the settings applyEnv actually reads). A key
+// whose env var is present is "tampered": env wins and the admin UI locks it.
+var settingEnvVars = map[string]string{
+	"coreReturnHttpsUrls":             "CORE_RETURN_HTTPS_URLS",
+	"coreDefaultDomain":               "CORE_DEFAULT_DOMAIN",
+	"coreTempDirectory":               "CORE_TEMP_DIRECTORY",
+	"coreTrustProxy":                  "CORE_TRUST_PROXY",
+	"filesRoute":                      "FILES_ROUTE",
+	"filesLength":                     "FILES_LENGTH",
+	"filesDefaultFormat":              "FILES_DEFAULT_FORMAT",
+	"filesMaxFileSize":                "FILES_MAX_FILE_SIZE",
+	"filesDefaultCompressionFormat":   "FILES_DEFAULT_COMPRESSION_FORMAT",
+	"filesMaxFilesPerUpload":          "FILES_MAX_FILES_PER_UPLOAD",
+	"filesExtensionlessUrls":          "FILES_EXTENSIONLESS_URLS",
+	"filesRemoveGpsMetadata":          "FILES_REMOVE_GPS_METADATA",
+	"filesAssumeMimetypes":            "FILES_ASSUME_MIMETYPES",
+	"urlsRoute":                       "URLS_ROUTE",
+	"urlsLength":                      "URLS_LENGTH",
+	"featuresThumbnailsEnabled":       "FEATURES_THUMBNAILS_ENABLED",
+	"featuresThumbnailsNumberThreads": "FEATURES_THUMBNAILS_NUM_THREADS",
+	"featuresImageCompression":        "FEATURES_IMAGE_COMPRESSION",
+	"featuresUserRegistration":        "FEATURES_USER_REGISTRATION",
+	"featuresOauthRegistration":       "FEATURES_OAUTH_REGISTRATION",
+	"featuresMetricsEnabled":          "FEATURES_METRICS_ENABLED",
+	"websiteTitle":                    "WEBSITE_TITLE",
+	"mfaTotpEnabled":                  "MFA_TOTP_ENABLED",
+	"mfaTotpIssuer":                   "MFA_TOTP_ISSUER",
+	"mfaPasskeysEnabled":              "MFA_PASSKEYS_ENABLED",
+	"mfaPasskeysRpID":                 "MFA_PASSKEYS_RP_ID",
+	"mfaPasskeysOrigin":               "MFA_PASSKEYS_ORIGIN",
+	"oauthDiscordClientId":            "OAUTH_DISCORD_CLIENT_ID",
+	"oauthDiscordClientSecret":        "OAUTH_DISCORD_CLIENT_SECRET",
+	"oauthDiscordRedirectUri":         "OAUTH_DISCORD_REDIRECT_URI",
+	"oauthGithubClientId":             "OAUTH_GITHUB_CLIENT_ID",
+	"oauthGithubClientSecret":         "OAUTH_GITHUB_CLIENT_SECRET",
+	"oauthGithubRedirectUri":          "OAUTH_GITHUB_REDIRECT_URI",
+	"oauthGoogleClientId":             "OAUTH_GOOGLE_CLIENT_ID",
+	"oauthGoogleClientSecret":         "OAUTH_GOOGLE_CLIENT_SECRET",
+	"oauthGoogleRedirectUri":          "OAUTH_GOOGLE_REDIRECT_URI",
+	"oauthOidcClientId":               "OAUTH_OIDC_CLIENT_ID",
+	"oauthOidcClientSecret":           "OAUTH_OIDC_CLIENT_SECRET",
+	"oauthOidcAuthorizeUrl":           "OAUTH_OIDC_AUTHORIZE_URL",
+	"oauthOidcTokenUrl":               "OAUTH_OIDC_TOKEN_URL",
+	"oauthOidcUserinfoUrl":            "OAUTH_OIDC_USERINFO_URL",
+	"oauthOidcRedirectUri":            "OAUTH_OIDC_REDIRECT_URI",
+	"pwaEnabled":                      "PWA_ENABLED",
+	"domains":                         "DOMAINS",
+}
+
+// EnvTamperedKeys returns the flat setting keys whose environment variable is
+// set, so the admin UI can lock those inputs (env overrides the DB value).
+func EnvTamperedKeys() []string {
+	keys := make([]string, 0)
+	for flat, env := range settingEnvVars {
+		if _, ok := envRaw(env); ok {
+			keys = append(keys, flat)
+		}
+	}
+	return keys
+}
+
+// --- settings-blob value helpers (JSON-decoded values: bool, float64, string, []any) ---
+
+func sbBool(b map[string]any, k string, cur bool) bool {
+	if v, ok := b[k]; ok {
+		if bb, ok2 := v.(bool); ok2 {
+			return bb
+		}
+	}
+	return cur
+}
+
+func sbStr(b map[string]any, k string, cur string) string {
+	if v, ok := b[k]; ok {
+		switch t := v.(type) {
+		case string:
+			return t
+		case nil:
+			return ""
+		}
+	}
+	return cur
+}
+
+func sbInt(b map[string]any, k string, cur int) int {
+	if v, ok := b[k]; ok {
+		switch t := v.(type) {
+		case float64:
+			return int(t)
+		case int:
+			return t
+		case string:
+			if n, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
+				return n
+			}
+		}
+	}
+	return cur
+}
+
+func sbStrSlice(b map[string]any, k string, cur []string) []string {
+	if v, ok := b[k]; ok {
+		if arr, ok2 := v.([]any); ok2 {
+			out := make([]string, 0, len(arr))
+			for _, e := range arr {
+				if s, ok3 := e.(string); ok3 {
+					out = append(out, s)
+				}
+			}
+			return out
+		}
+	}
+	return cur
+}
+
+func sbDur(b map[string]any, k string, cur time.Duration) time.Duration {
+	if v, ok := b[k]; ok {
+		if s, ok2 := v.(string); ok2 {
+			if d, ok3 := parseMsDuration(s); ok3 {
+				return d
+			}
+		}
+	}
+	return cur
+}
+
+// parseMsDuration parses Zipline's ms-style duration strings ("30m", "1d", "1h",
+// "45s", "500ms", "1w"). time.ParseDuration handles all but day/week.
+func parseMsDuration(s string) (time.Duration, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	if strings.HasSuffix(s, "w") {
+		if n, err := strconv.ParseFloat(strings.TrimSuffix(s, "w"), 64); err == nil {
+			return time.Duration(n * float64(7*24*time.Hour)), true
+		}
+	}
+	if strings.HasSuffix(s, "d") {
+		if n, err := strconv.ParseFloat(strings.TrimSuffix(s, "d"), 64); err == nil {
+			return time.Duration(n * float64(24*time.Hour)), true
+		}
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return d, true
+	}
+	return 0, false
 }
 
 // --- env helpers (with *_FILE indirection) ---

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,6 +49,20 @@ func main() {
 	}
 	log.Info("database ready")
 
+	// Overlay DB-persisted settings (saved via the admin Settings UI) onto the
+	// env-based config, so runtime settings take effect — exactly like Zipline
+	// (defaults -> DB -> env, env wins).
+	if data, _, lerr := store.LoadSettings(ctx); lerr == nil && len(data) > 0 {
+		var blob map[string]any
+		if json.Unmarshal(data, &blob) == nil {
+			if eff, berr := config.BuildEffective(blob); berr == nil {
+				cfg = eff
+			} else {
+				log.Warn("failed to apply db settings to config", "err", berr)
+			}
+		}
+	}
+
 	ds, err := buildDatasource(cfg)
 	if err != nil {
 		log.Error("failed to init datasource", "err", err)
@@ -65,6 +80,7 @@ func main() {
 		DS:       ds,
 		Log:      log,
 		Version:  version,
+		Tampered: config.EnvTamperedKeys(),
 		Sessions: auth.NewSessionManager(cfg.Core.Secret, cfg.Core.ReturnHTTPSURLs),
 	}
 

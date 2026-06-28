@@ -461,8 +461,19 @@ func (a *App) srvFlatSettings(ctx context.Context) map[string]any {
 		"domains": emptyStrSlice(c.Domains),
 	}
 
-	// Overlay the stored JSONB blob so admin-saved values round-trip. The blob holds
-	// flat keys (the PATCH body shape); replace wholesale per key.
+	// Snapshot env-overridden (tampered) keys: their effective values come from
+	// a.Cfg (env wins) and must not be replaced by the DB blob below.
+	tampered := a.tamperedList()
+	tsnap := make(map[string]any, len(tampered))
+	for _, k := range tampered {
+		if v, ok := flat[k]; ok {
+			tsnap[k] = v
+		}
+	}
+
+	// Overlay the stored JSONB blob so admin-saved values round-trip — including
+	// settings not modeled in Config (e.g. external links, discord embeds). The
+	// blob holds flat keys (the PATCH body shape); replace wholesale per key.
 	if data, _, err := a.Store.LoadSettings(ctx); err == nil && len(data) > 0 {
 		var stored map[string]any
 		if json.Unmarshal(data, &stored) == nil {
@@ -470,6 +481,11 @@ func (a *App) srvFlatSettings(ctx context.Context) map[string]any {
 				flat[k] = v
 			}
 		}
+	}
+
+	// Restore env-winning values for tampered keys.
+	for k, v := range tsnap {
+		flat[k] = v
 	}
 
 	return flat
@@ -485,8 +501,17 @@ func (a *App) handleServerWebSettings(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleServerGetSettings(w http.ResponseWriter, r *http.Request) {
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"settings": a.srvFlatSettings(r.Context()),
-		"tampered": []string{},
+		"tampered": a.tamperedList(),
 	})
+}
+
+// tamperedList returns the env-overridden setting keys (never nil, so the client
+// always receives a JSON array it can use to lock those inputs).
+func (a *App) tamperedList() []string {
+	if a.Tampered == nil {
+		return []string{}
+	}
+	return a.Tampered
 }
 
 func (a *App) handleServerPatchSettings(w http.ResponseWriter, r *http.Request) {
@@ -520,10 +545,14 @@ func (a *App) handleServerPatchSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Apply the saved settings to the live config so the change takes effect
+	// immediately (no restart), exactly like Zipline.
+	a.ReloadSettings(r.Context())
+
 	// Return the same { settings, tampered } shape as GET, with the new blob applied.
 	a.WriteJSON(w, http.StatusOK, map[string]any{
 		"settings": a.srvFlatSettings(r.Context()),
-		"tampered": []string{},
+		"tampered": a.tamperedList(),
 	})
 }
 
