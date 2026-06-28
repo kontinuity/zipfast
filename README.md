@@ -1,4 +1,4 @@
-# Zipfast
+# Zipfast (Experimental)
 
 [![CI](https://github.com/kontinuity/zipfast/actions/workflows/ci.yml/badge.svg)](https://github.com/kontinuity/zipfast/actions/workflows/ci.yml)
 [![Release](https://github.com/kontinuity/zipfast/actions/workflows/release.yml/badge.svg)](https://github.com/kontinuity/zipfast/actions/workflows/release.yml)
@@ -14,6 +14,12 @@ A low-footprint reimplementation of [Zipline](https://github.com/diced/zipline) 
 ShareX-compatible file & URL sharing server — written in **Go**. It keeps Zipline v4's
 data model, API, and `x-zipline-*` upload contract, so existing clients (ShareX, etc.)
 and the v4 SPA work unchanged — but it idles in a fraction of the memory.
+
+> 🧪 **Experimental — use at your own risk.** Zipfast is a young, community-built
+> project and a labor of love. It's end-to-end tested and runs happily day to day,
+> but it hasn't seen large-scale production use yet — so please keep backups of
+> anything important 💾. Bugs get fixed as they surface, and issues & PRs are always
+> welcome 🙌 — that's how it gets better. 💛
 
 ## Why I ported Zipline to Go
 
