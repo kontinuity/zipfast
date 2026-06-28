@@ -38,7 +38,7 @@
     "@prisma/migrate": "6.13.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.0",
-    "@smithy/node-http-handler": "^4.7.2",
+    "@smithy/node-http-handler": "^4.8.2",
     "@tabler/icons-react": "^3.44.0",
     "archiver": "7.0.1",
     "argon2": "^0.44.0",
