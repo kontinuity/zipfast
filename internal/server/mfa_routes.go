@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/lucsky/cuid"
 
@@ -35,18 +37,16 @@ func (a *App) registerMfaRoutes(r chi.Router) {
 		r.Post("/api/user/mfa/totp", a.mfaTotpEnable)
 		r.Delete("/api/user/mfa/totp", a.mfaTotpDisable)
 
-		// Passkey management.
+		// Passkey management + registration (paths match the SPA / upstream Zipline).
 		r.Get("/api/user/mfa/passkey", a.mfaPasskeyList)
-		r.Delete("/api/user/mfa/passkey/{id}", a.mfaPasskeyDelete)
-
-		// Passkey registration ceremony.
-		r.Post("/api/user/mfa/passkey/register/begin", a.mfaPasskeyRegisterBegin)
-		r.Post("/api/user/mfa/passkey/register/finish", a.mfaPasskeyRegisterFinish)
+		r.Get("/api/user/mfa/passkey/options", a.mfaPasskeyRegisterOptions)
+		r.Post("/api/user/mfa/passkey", a.mfaPasskeyRegisterFinish)
+		r.Delete("/api/user/mfa/passkey", a.mfaPasskeyDelete)
 	})
 
-	// Public: WebAuthn login ceremony.
-	r.Post("/api/auth/webauthn/begin", a.mfaWebAuthnLoginBegin)
-	r.Post("/api/auth/webauthn/finish", a.mfaWebAuthnLoginFinish)
+	// Public: usernameless (discoverable) WebAuthn login ceremony.
+	r.Get("/api/auth/webauthn/options", a.mfaWebAuthnLoginOptions)
+	r.Post("/api/auth/webauthn", a.mfaWebAuthnLoginFinish)
 }
 
 // --- TOTP ---
@@ -313,10 +313,11 @@ func (a *App) mfaClearSession(w http.ResponseWriter, name string) {
 
 // --- WebAuthn: registration ---
 
-// mfaPasskeyRegisterBegin starts a registration ceremony for the authenticated
-// user, returning the credential-creation options and stashing the matching
-// SessionData in an HttpOnly cookie for the finish step.
-func (a *App) mfaPasskeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
+// mfaPasskeyRegisterOptions starts a registration ceremony for the authenticated
+// user (GET /api/user/mfa/passkey/options). It returns the inner credential-
+// creation options (optionsJSON) the SPA passes to startRegistration, and stashes
+// the matching SessionData in an HttpOnly cookie for the finish step.
+func (a *App) mfaPasskeyRegisterOptions(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if user == nil {
 		a.Error(w, http.StatusUnauthorized, "unauthorized")
@@ -346,15 +347,28 @@ func (a *App) mfaPasskeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.WriteJSON(w, http.StatusOK, creation)
+	// The SPA's startRegistration({ optionsJSON }) expects the inner options
+	// object, not the {publicKey:...} wrapper.
+	a.WriteJSON(w, http.StatusOK, creation.Response)
 }
 
-// mfaPasskeyRegisterFinish completes a registration ceremony, persisting the new
-// credential under the supplied name (from the "name" query parameter).
+// mfaPasskeyRegisterFinish completes a registration ceremony
+// (POST /api/user/mfa/passkey). The SPA sends { response, name } where response
+// is the WebAuthn RegistrationResponseJSON; we verify it against the stashed
+// ceremony, persist the credential, and acknowledge.
 func (a *App) mfaPasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if user == nil {
 		a.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var body struct {
+		Response json.RawMessage `json:"response"`
+		Name     string          `json:"name"`
+	}
+	if err := a.ReadJSON(r, &body); err != nil || len(body.Response) == 0 {
+		a.Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -377,7 +391,13 @@ func (a *App) mfaPasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	credential, err := wa.FinishRegistration(waUser, *sessionData, r)
+	parsed, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(body.Response))
+	if err != nil {
+		a.Error(w, http.StatusBadRequest, "failed to parse registration response")
+		return
+	}
+
+	credential, err := wa.CreateCredential(waUser, *sessionData, parsed)
 	if err != nil {
 		a.Error(w, http.StatusBadRequest, "failed to verify registration")
 		return
@@ -389,7 +409,7 @@ func (a *App) mfaPasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	name := strings.TrimSpace(body.Name)
 	if name == "" {
 		name = "Passkey"
 	}
@@ -405,50 +425,21 @@ func (a *App) mfaPasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	a.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// --- WebAuthn: login ---
+// --- WebAuthn: login (usernameless / discoverable) ---
 
-// mfaUsernameReq is the body for the public WebAuthn login endpoints.
-type mfaUsernameReq struct {
-	Username string `json:"username"`
-}
-
-// mfaWebAuthnLoginBegin starts a login ceremony for the named user, returning the
-// assertion options and stashing the SessionData in an HttpOnly cookie.
-func (a *App) mfaWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request) {
-	var body mfaUsernameReq
-	if err := a.ReadJSON(r, &body); err != nil {
-		a.Error(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	body.Username = strings.TrimSpace(body.Username)
-	if body.Username == "" {
-		a.Error(w, http.StatusBadRequest, "username is required")
-		return
-	}
-
-	user, err := a.Store.GetUserByUsername(r.Context(), body.Username)
-	if err != nil || user == nil {
-		a.Error(w, http.StatusUnauthorized, "invalid username")
-		return
-	}
-
+// mfaWebAuthnLoginOptions starts a discoverable login ceremony
+// (GET /api/auth/webauthn/options). It returns { id, options } where options is
+// the assertion optionsJSON the SPA passes to startAuthentication; the matching
+// SessionData is stashed in an HttpOnly cookie for the finish step. No username
+// is required — the authenticator resolves the user via a resident credential.
+func (a *App) mfaWebAuthnLoginOptions(w http.ResponseWriter, r *http.Request) {
 	wa, err := a.mfaWebAuthn(r)
 	if err != nil {
 		a.Error(w, http.StatusInternalServerError, "webauthn not configured")
 		return
 	}
 
-	waUser, err := a.mfaLoadWebAuthnUser(r.Context(), user)
-	if err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to load credentials")
-		return
-	}
-	if len(waUser.credentials) == 0 {
-		a.Error(w, http.StatusBadRequest, "no passkeys registered for this user")
-		return
-	}
-
-	assertion, sessionData, err := wa.BeginLogin(waUser)
+	assertion, sessionData, err := wa.BeginDiscoverableLogin()
 	if err != nil {
 		a.Error(w, http.StatusInternalServerError, "failed to begin login")
 		return
@@ -459,21 +450,22 @@ func (a *App) mfaWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.WriteJSON(w, http.StatusOK, assertion)
+	a.WriteJSON(w, http.StatusOK, map[string]any{
+		"id":      cuid.New(),
+		"options": assertion.Response,
+	})
 }
 
-// mfaWebAuthnLoginFinish completes a login ceremony. On success it updates the
-// credential's last_used timestamp, establishes a session (matching the
-// password-login flow), records the session row, and returns the user.
+// mfaWebAuthnLoginFinish completes a discoverable login ceremony
+// (POST /api/auth/webauthn). The SPA sends { response } (an AuthenticationResponseJSON).
+// We resolve the user from the credential's user handle, verify, establish a
+// session (matching the password-login flow), and return { user }.
 func (a *App) mfaWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
-	var body mfaUsernameReq
-	if err := a.ReadJSON(r, &body); err != nil {
-		a.Error(w, http.StatusBadRequest, "invalid request body")
-		return
+	var body struct {
+		Response json.RawMessage `json:"response"`
 	}
-	body.Username = strings.TrimSpace(body.Username)
-	if body.Username == "" {
-		a.Error(w, http.StatusBadRequest, "username is required")
+	if err := a.ReadJSON(r, &body); err != nil || len(body.Response) == 0 {
+		a.Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -484,50 +476,54 @@ func (a *App) mfaWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	defer a.mfaClearSession(w, mfaLoginSessionCookie)
 
-	user, err := a.Store.GetUserByUsername(r.Context(), body.Username)
-	if err != nil || user == nil {
-		a.Error(w, http.StatusUnauthorized, "invalid username")
-		return
-	}
-
 	wa, err := a.mfaWebAuthn(r)
 	if err != nil {
 		a.Error(w, http.StatusInternalServerError, "webauthn not configured")
 		return
 	}
 
-	waUser, err := a.mfaLoadWebAuthnUser(r.Context(), user)
+	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(body.Response))
 	if err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to load credentials")
+		a.Error(w, http.StatusBadRequest, "failed to parse login response")
 		return
 	}
 
-	credential, err := wa.FinishLogin(waUser, *sessionData, r)
-	if err != nil {
+	// The user handle is the user's id (see WebAuthnID). Resolve and load their
+	// credentials so go-webauthn can match the asserted credential.
+	var matched *models.User
+	handler := func(_, userHandle []byte) (webauthn.User, error) {
+		u, uerr := a.Store.GetUserByID(r.Context(), string(userHandle))
+		if uerr != nil || u == nil {
+			return nil, errors.New("user not found")
+		}
+		matched = u
+		return a.mfaLoadWebAuthnUser(r.Context(), u)
+	}
+
+	credential, err := wa.ValidateDiscoverableLogin(handler, *sessionData, parsed)
+	if err != nil || matched == nil {
 		a.Error(w, http.StatusUnauthorized, "failed to verify login")
 		return
 	}
 
-	// Best-effort: bump last_used for the credential that was used. The stored
-	// reg blob's "id" is the base64url-encoded credential ID.
-	if err := a.mfaTouchCredential(r.Context(), user.ID, credential); err != nil {
-		a.Log.Warn("failed to update passkey last_used", "error", err, "user", user.ID)
+	if err := a.mfaTouchCredential(r.Context(), matched.ID, credential); err != nil {
+		a.Log.Warn("failed to update passkey last_used", "error", err, "user", matched.ID)
 	}
 
 	// Establish a session, mirroring the password-login flow.
 	s := a.Sessions.Get(r)
-	s.UserID = user.ID
+	s.UserID = matched.ID
 	s.SessionID = auth.RandomString(32)
 	if err := a.Sessions.Save(w, s); err != nil {
 		a.Error(w, http.StatusInternalServerError, "failed to create session")
 		return
 	}
 
-	if err := a.mfaInsertSession(r, s.SessionID, user.ID); err != nil {
-		a.Log.Warn("failed to record user session", "error", err, "user", user.ID)
+	if err := a.mfaInsertSession(r, s.SessionID, matched.ID); err != nil {
+		a.Log.Warn("failed to record user session", "error", err, "user", matched.ID)
 	}
 
-	a.WriteJSON(w, http.StatusOK, map[string]any{"user": user})
+	a.WriteJSON(w, http.StatusOK, map[string]any{"user": matched})
 }
 
 // mfaTouchCredential updates the last_used timestamp of the passkey whose stored
@@ -617,35 +613,45 @@ func (a *App) mfaPasskeyList(w http.ResponseWriter, r *http.Request) {
 		a.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-
-	rows, err := a.Store.Pool.Query(r.Context(),
-		`SELECT id, name, created_at, last_used FROM user_passkeys
-		 WHERE user_id=$1 ORDER BY created_at DESC`, user.ID)
-	if err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to list passkeys")
-		return
-	}
-	defer rows.Close()
-
-	passkeys := []mfaPasskeyInfo{}
-	for rows.Next() {
-		var p mfaPasskeyInfo
-		if err := rows.Scan(&p.ID, &p.Name, &p.CreatedAt, &p.LastUsed); err != nil {
-			a.Error(w, http.StatusInternalServerError, "failed to read passkeys")
-			return
-		}
-		passkeys = append(passkeys, p)
-	}
-	if err := rows.Err(); err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to read passkeys")
-		return
-	}
-
-	a.WriteJSON(w, http.StatusOK, map[string]any{"passkeys": passkeys})
+	a.WriteJSON(w, http.StatusOK, a.mfaPasskeysForClient(r.Context(), user.ID))
 }
 
-// mfaPasskeyDelete removes one of the authenticated user's passkeys by id. The
-// delete is scoped to the user so a caller cannot remove another user's key.
+// mfaPasskeysForClient lists a user's passkeys in the shape the SPA expects:
+// { id, name, createdAt, lastUsed, reg }. The stored reg blob is a go-webauthn
+// credential; we expose only a synthetic reg.webauthn marker so the SPA does not
+// flag these as legacy/incompatible (and never leaks the real credential).
+func (a *App) mfaPasskeysForClient(ctx context.Context, userID string) []map[string]any {
+	out := []map[string]any{}
+	rows, err := a.Store.Pool.Query(ctx,
+		`SELECT id, name, created_at, last_used FROM user_passkeys
+		 WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id, name  string
+			createdAt time.Time
+			lastUsed  *time.Time
+		)
+		if err := rows.Scan(&id, &name, &createdAt, &lastUsed); err != nil {
+			continue
+		}
+		out = append(out, map[string]any{
+			"id":        id,
+			"name":      name,
+			"createdAt": createdAt,
+			"lastUsed":  lastUsed,
+			"reg":       map[string]any{"webauthn": map[string]any{}},
+		})
+	}
+	return out
+}
+
+// mfaPasskeyDelete removes one of the authenticated user's passkeys
+// (DELETE /api/user/mfa/passkey, body { id }). The delete is scoped to the user
+// so a caller cannot remove another user's key.
 func (a *App) mfaPasskeyDelete(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if user == nil {
@@ -653,14 +659,16 @@ func (a *App) mfaPasskeyDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
-	if id == "" {
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := a.ReadJSON(r, &body); err != nil || strings.TrimSpace(body.ID) == "" {
 		a.Error(w, http.StatusBadRequest, "id is required")
 		return
 	}
 
 	tag, err := a.Store.Pool.Exec(r.Context(),
-		`DELETE FROM user_passkeys WHERE id=$1 AND user_id=$2`, id, user.ID)
+		`DELETE FROM user_passkeys WHERE id=$1 AND user_id=$2`, body.ID, user.ID)
 	if err != nil {
 		a.Error(w, http.StatusInternalServerError, "failed to delete passkey")
 		return

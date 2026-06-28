@@ -43,9 +43,6 @@ func (a *App) registerUserRoutes(r chi.Router) {
 		r.Get("/api/user/token", a.userGetToken)
 		r.Patch("/api/user/token", a.userPatchToken)
 
-		// Avatar (base64 data URL).
-		r.Get("/api/user/avatar", a.userGetAvatar)
-
 		// Files.
 		r.Get("/api/user/files", a.userListFiles)
 		r.Get("/api/user/files/{id}", a.userGetFile)
@@ -85,7 +82,21 @@ func (a *App) registerUserRoutes(r chi.Router) {
 // in the original and is therefore not part of this JSON body).
 func (a *App) userGetSelf(w http.ResponseWriter, r *http.Request) {
 	u := UserFromContext(r.Context())
-	a.WriteJSON(w, http.StatusOK, map[string]any{"user": u})
+
+	// The auth middleware doesn't load passkeys; inject them so the
+	// manage-passkeys UI (which reads user.passkeys) can list them.
+	raw, err := json.Marshal(u)
+	if err != nil {
+		a.WriteJSON(w, http.StatusOK, map[string]any{"user": u})
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		a.WriteJSON(w, http.StatusOK, map[string]any{"user": u})
+		return
+	}
+	m["passkeys"] = a.mfaPasskeysForClient(r.Context(), u.ID)
+	a.WriteJSON(w, http.StatusOK, map[string]any{"user": m})
 }
 
 type userPatchSelfBody struct {
@@ -142,30 +153,6 @@ func (a *App) userPatchSelf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.WriteJSON(w, http.StatusOK, map[string]any{"user": updated})
-}
-
-// userGetAvatar mirrors GET /api/user/avatar: the current user's avatar as a
-// base64 data URL string. Unlike the original (which 404s when unset), we return
-// 204 No Content so a user without an avatar doesn't generate a noisy 404 on
-// every page load; the client renders its placeholder either way.
-func (a *App) userGetAvatar(w http.ResponseWriter, r *http.Request) {
-	u := UserFromContext(r.Context())
-
-	var avatar *string
-	if err := a.Store.Pool.QueryRow(r.Context(),
-		`SELECT avatar FROM users WHERE id=$1`, u.ID).Scan(&avatar); err != nil {
-		a.Error(w, http.StatusInternalServerError, "failed to load avatar")
-		return
-	}
-	if avatar == nil || *avatar == "" {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "private, max-age=60")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(*avatar))
 }
 
 // --- token ---

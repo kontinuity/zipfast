@@ -209,8 +209,10 @@ func (a *App) uexDeleteSessions(w http.ResponseWriter, r *http.Request) {
 // --- avatar ---
 
 // uexGetAvatar mirrors GET /api/user/avatar: it returns the stored avatar as a
-// raw data-URL string (text/plain), not JSON. A missing avatar is a 404
-// (ApiError 9002 in the original). The client (useAvatar) reads res.text().
+// raw data-URL string (text/plain), not JSON. The client (useAvatar) reads
+// res.text(). Unlike the original (which 404s when unset), we return 204 No
+// Content for a missing avatar so users without one don't generate a noisy 404
+// on every page load; the client renders its placeholder either way.
 func (a *App) uexGetAvatar(w http.ResponseWriter, r *http.Request) {
 	u := UserFromContext(r.Context())
 
@@ -221,11 +223,12 @@ func (a *App) uexGetAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if avatar == nil || *avatar == "" {
-		a.Error(w, http.StatusNotFound, "no avatar")
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(*avatar))
 }
