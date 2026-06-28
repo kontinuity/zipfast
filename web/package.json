@@ -23,7 +23,7 @@
     "@fastify/static": "^9.1.3",
     "@fastify/swagger": "^9.7.0",
     "@mantine/charts": "^9.2.0",
-    "@mantine/code-highlight": "^9.2.0",
+    "@mantine/code-highlight": "^9.4.1",
     "@mantine/core": "^9.2.0",
     "@mantine/dates": "^9.2.0",
     "@mantine/dropzone": "^9.2.0",
