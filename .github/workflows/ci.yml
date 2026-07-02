@@ -5,10 +5,10 @@ name: CI
 # stay short.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+#  push:
+#    branches: [main]
+#  pull_request:
+#    branches: [main]
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref so rapid PR pushes don't pile up.
