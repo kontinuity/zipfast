@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 	"strings"
 
 	"zipfast/internal/config"
+	"zipfast/internal/logger"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -22,6 +24,11 @@ type S3 struct {
 	// prefix is the (optionally empty) Subdirectory under which every object key
 	// is stored. It never carries a leading/trailing slash.
 	prefix string
+	// log carries a component-scoped slog logger. Read paths emit debug records
+	// (visible with LOG_LEVEL=debug) describing the exact key queried, which is
+	// the fastest way to diagnose a "file is in the bucket but the frontend gets
+	// a 404" mismatch — almost always a Subdirectory prefix discrepancy.
+	log *slog.Logger
 }
 
 // ensure S3 satisfies the Datasource contract at compile time.
@@ -58,7 +65,11 @@ func NewS3(cfg config.S3DS) (*S3, error) {
 		client: client,
 		bucket: cfg.Bucket,
 		prefix: strings.Trim(cfg.Subdirectory, "/"),
+		log:    logger.Log("datasource.s3"),
 	}
+	s.log.Debug("s3 datasource initialised",
+		"endpoint", endpoint, "bucket", s.bucket, "prefix", s.prefix,
+		"region", cfg.Region, "force_path_style", cfg.ForcePathStyle)
 
 	// Verify connectivity (and that the bucket exists) up front so misconfiguration
 	// fails loudly at startup rather than on the first upload.
@@ -97,6 +108,26 @@ func isNoSuchKey(err error) bool {
 	return code == "NoSuchKey" || code == "NoSuchObject"
 }
 
+// logLookup emits a debug record describing how a read resolved. It always
+// records the raw name, the configured bucket/prefix, and the fully resolved
+// object key, so a request that 404s can be compared against what actually
+// lives in the bucket. On error it also surfaces the S3 error code and HTTP
+// status (a NoSuchKey 404 vs. an AccessDenied 403 look identical to the caller
+// but mean very different things). This is intentionally debug-level so it stays
+// silent in production until LOG_LEVEL=debug is set.
+func (s *S3) logLookup(op, file, key string, err error) {
+	if err == nil {
+		s.log.Debug("s3 lookup hit",
+			"op", op, "bucket", s.bucket, "prefix", s.prefix, "file", file, "key", key)
+		return
+	}
+	resp := minio.ToErrorResponse(err)
+	s.log.Debug("s3 lookup miss",
+		"op", op, "bucket", s.bucket, "prefix", s.prefix, "file", file, "key", key,
+		"not_found", isNoSuchKey(err),
+		"s3_code", resp.Code, "http_status", resp.StatusCode, "err", err.Error())
+}
+
 // Get returns a reader for the whole object, or (nil, nil) if it does not exist.
 func (s *S3) Get(file string) (io.ReadCloser, error) {
 	ctx := context.Background()
@@ -105,6 +136,7 @@ func (s *S3) Get(file string) (io.ReadCloser, error) {
 	// StatObject first so a missing object is reported as (nil, nil) instead of
 	// surfacing lazily on the first Read of the returned stream.
 	if _, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{}); err != nil {
+		s.logLookup("Get", file, key, err)
 		if isNoSuchKey(err) {
 			return nil, nil
 		}
@@ -113,11 +145,13 @@ func (s *S3) Get(file string) (io.ReadCloser, error) {
 
 	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
+		s.logLookup("Get", file, key, err)
 		if isNoSuchKey(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	s.logLookup("Get", file, key, nil)
 	return obj, nil
 }
 
@@ -144,9 +178,11 @@ func (s *S3) Delete(file string) error {
 
 // Size returns the object size, or -1 if it does not exist.
 func (s *S3) Size(file string) (int64, error) {
-	info, err := s.client.StatObject(context.Background(), s.bucket, s.key(file),
+	key := s.key(file)
+	info, err := s.client.StatObject(context.Background(), s.bucket, key,
 		minio.StatObjectOptions{})
 	if err != nil {
+		s.logLookup("Size", file, key, err)
 		if isNoSuchKey(err) {
 			return -1, nil
 		}
@@ -225,6 +261,7 @@ func (s *S3) Range(file string, start, end int64) (io.ReadCloser, error) {
 
 	obj, err := s.client.GetObject(ctx, s.bucket, key, getOpts)
 	if err != nil {
+		s.logLookup("Range", file, key, err)
 		if isNoSuchKey(err) {
 			return nil, nil
 		}
@@ -234,6 +271,7 @@ func (s *S3) Range(file string, start, end int64) (io.ReadCloser, error) {
 	// GetObject is lazy, so confirm existence via Stat to honour the (nil, nil)
 	// not-found contract before returning the stream.
 	if _, err := obj.Stat(); err != nil {
+		s.logLookup("Range", file, key, err)
 		obj.Close()
 		if isNoSuchKey(err) {
 			return nil, nil
@@ -241,6 +279,9 @@ func (s *S3) Range(file string, start, end int64) (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	s.log.Debug("s3 lookup hit",
+		"op", "Range", "bucket", s.bucket, "prefix", s.prefix, "file", file, "key", key,
+		"start", start, "end", end)
 	length := end - start + 1
 	return &s3RangeReadCloser{Reader: io.LimitReader(obj, length), obj: obj}, nil
 }
@@ -264,15 +305,22 @@ func (s *S3) List(prefix string) ([]string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	resolved := s.key(prefix)
 	var out []string
 	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
-		Prefix:    s.key(prefix),
+		Prefix:    resolved,
 		Recursive: true,
 	}) {
 		if obj.Err != nil {
+			s.log.Debug("s3 list error",
+				"bucket", s.bucket, "requested_prefix", prefix, "resolved_prefix", resolved,
+				"err", obj.Err.Error())
 			return out, obj.Err
 		}
 		out = append(out, s.stripPrefix(obj.Key))
 	}
+	s.log.Debug("s3 list",
+		"bucket", s.bucket, "requested_prefix", prefix, "resolved_prefix", resolved,
+		"count", len(out))
 	return out, nil
 }
