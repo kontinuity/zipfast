@@ -160,14 +160,21 @@ func (a *App) fileFolderProtected(ctx context.Context, file *models.File) (strin
 
 // fileFolderBlocked enforces folder-level protection for a file. If the file's
 // folder is password-protected and the request lacks a valid folder token, it
-// redirects to the folder gate and returns true (the caller must stop). This is
-// the "gate direct file access" path: even with a direct /raw, /u, or /view URL,
-// a file inside a locked folder requires unlocking the folder first.
+// renders a short notice telling the visitor the file lives in a protected
+// folder (with a link to open the folder gate) and returns true (the caller must
+// stop). This is the "gate direct file access" path: even with a direct /raw,
+// /u, or /view URL, a file inside a locked folder requires unlocking the folder
+// first. The notice replaces an earlier auto-redirect to /folder/{id}, which
+// landed on the SPA's generic 404 for protected (non-public) folders.
 func (a *App) fileFolderBlocked(w http.ResponseWriter, r *http.Request, file *models.File) bool {
 	fid, prot := a.fileFolderProtected(r.Context(), file)
 	if prot && !a.folderTokenValid(r, fid) {
 		a.logFor(r).Debug("file access gated by folder password", "folder", fid, "name", file.Name)
-		http.Redirect(w, r, "/folder/"+fid, http.StatusFound)
+		// Served as 200 with an explanatory page rather than a redirect/error so the
+		// message renders directly on the file URL and isn't swallowed by the SPA.
+		var m embedMeta
+		m.title("Protected Folder")
+		a.writeHTML(w, http.StatusOK, embedDoc(m.b.String(), folderProtectedBody(fid)))
 		return true
 	}
 	return false

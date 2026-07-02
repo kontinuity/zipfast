@@ -114,6 +114,21 @@ func passwordFormBody(action string, showError bool) string {
 	return b.String()
 }
 
+// folderProtectedBody renders the notice shown when a visitor opens a file that
+// lives inside a password-protected folder. Instead of prompting for the folder
+// password on the file's own URL, it points the visitor at the folder gate,
+// where a single unlock covers the whole folder.
+func folderProtectedBody(folderID string) string {
+	href := "/folder/" + embedEsc(folderID)
+	var b strings.Builder
+	b.WriteString(`<main class="card center">`)
+	b.WriteString(`<h1>Protected Folder</h1>`)
+	b.WriteString(`<p class="muted">This file is part of a protected folder. Please open the folder to view the file.</p>`)
+	b.WriteString(`<div class="row"><a class="btn" href="` + href + `">Open folder</a></div>`)
+	b.WriteString(`</main>`)
+	return b.String()
+}
+
 // fileDisplayName prefers the original upload name, falling back to the stored name.
 func fileDisplayName(f *models.File) string {
 	if f.OriginalName != nil && *f.OriginalName != "" {
