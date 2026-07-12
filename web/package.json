@@ -33,7 +33,7 @@
     "@mantine/notifications": "^9.2.0",
     "@prisma/adapter-pg": "6.13.0",
     "@prisma/client": "6.13.0",
-    "@prisma/engines": "6.13.0",
+    "@prisma/engines": "7.8.0",
     "@prisma/internals": "6.13.0",
     "@prisma/migrate": "6.13.0",
     "@simplewebauthn/browser": "^13.3.0",
